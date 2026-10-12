@@ -445,14 +445,28 @@ function connectKey() {
     connected(short(account));
   } catch (e) { showOut(out, "Could not use this key: " + (e?.message || String(e)), "err"); }
 }
-function startTestSession() {
-  const generated = createAccount();
-  account = generated.address ?? generated;
+const TEST_KEY_SLOT = "bountyanchor.testsession";
+function readTestKey() { try { const v = sessionStorage.getItem(TEST_KEY_SLOT); return /^0x[0-9a-f]{64}$/.test(v || "") ? v : ""; } catch (e) { return ""; } }
+function writeTestKey(v) { try { if (v) sessionStorage.setItem(TEST_KEY_SLOT, v); else sessionStorage.removeItem(TEST_KEY_SLOT); } catch (e) {} }
+function randomKey() {
+  const b = new Uint8Array(32);
+  crypto.getRandomValues(b);
+  return "0x" + Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+}
+function startTestSession(silent) {
+  let pk = readTestKey();
+  const fresh = !pk;
+  if (fresh) pk = randomKey();
+  const acct = createAccount(pk);
+  if (fresh) writeTestKey(pk);
+  account = acct.address;
   usingInjected = false;
-  client = createClient({ chain: studionet, account: generated });
-  connected("Test - " + short(account));
+  client = createClient({ chain: studionet, account: acct });
+  setStatus(true, "Test - " + short(account));
+  if (!silent) { closeSheet(); route(); }
 }
 function disconnect() {
+  writeTestKey("");
   client = null; account = null;
   setStatus(false, "Connect wallet");
   closeSheet(); route();
@@ -462,7 +476,7 @@ $("sheetClose").addEventListener("click", closeSheet);
 sheet.addEventListener("click", (e) => { if (e.target === sheet) closeSheet(); });
 $("connInjected").addEventListener("click", connectInjected);
 $("connKey").addEventListener("click", connectKey);
-$("connTest").addEventListener("click", startTestSession);
+$("connTest").addEventListener("click", () => startTestSession(false));
 $("connDisconnect").addEventListener("click", disconnect);
 $("connCopy").addEventListener("click", async () => {
   try { await navigator.clipboard.writeText(String(account || "")); $("connCopy").textContent = "Copied"; } catch (e) { $("connCopy").textContent = "Select the address above and copy it"; }
@@ -933,6 +947,7 @@ function route() {
   window.scrollTo(0, 0);
 }
 window.addEventListener("hashchange", route);
+if (readTestKey()) { try { startTestSession(true); } catch (e) { writeTestKey(""); } }
 route();
 </script>
 </body>
