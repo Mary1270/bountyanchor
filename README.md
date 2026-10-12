@@ -114,7 +114,7 @@ The time-gated paths were run on `contract_testnet_deploy.py`, a copy of the con
 | One pull request offered to two bounties | Earlier bounty took the claim; the later one was refunded at settlement |
 | `recover_stuck_appeal` | Not run live, reviewed in code only |
 
-After every run the contract balance returned to zero. The frontend has not been tested with a real wallet. The full record, including transaction hashes, is in `TESTNET_TESTS.md`. See `ARCHITECTURE.md` for known limitations.
+After every run the contract balance returned to zero. The frontend was tested live on the production contract with two throwaway test-session accounts (create, cancel, balance, withdraw, accept); it has not been tested with a browser-extension wallet. The full record, including transaction hashes, is in `TESTNET_TESTS.md`. See `ARCHITECTURE.md` for known limitations.
 
 ## License
 

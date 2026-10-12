@@ -83,3 +83,16 @@ Hashes are shortened exactly as GenLayer Studio displays them. Full hashes are v
 
 - A `cancel_bounty` call (`0x2be464dc...2d9cb320`) was sent by mistake before the bounties were created. It reverted with "No bounty found with this id" and changed nothing.
 - A second `withdraw` by the contributor after an earlier full withdrawal ended in ERROR and moved no funds.
+
+## Frontend test on the production contract
+
+Run from the GitHub Pages frontend with two throwaway test-session accounts (sponsor `0x7B17E2ec...458E`, contributor `0x0EecFF5c...D33B`) against `0x2608a47d0b6A2e7606cd4C89d23Db12f14B1bc97`.
+
+| Step | Result |
+| --- | --- |
+| Create bounty (bounty_4) and cancel | Cancelled, 1 GEN credited to sponsor balance |
+| Withdraw | Balance 1 GEN to 0 GEN (the UI showed a transient "Failed to fetch" while polling, the withdrawal itself succeeded) |
+| Create with contributor wallet equal to sponsor | Rejected, the attached 1 GEN was credited to the balance and withdrawn |
+| Create bounty (bounty_5) and accept from the contributor account | Status Accepted, collecting evidence |
+
+bounty_5 is left open on the production contract.
