@@ -65,6 +65,8 @@ Every state has a way out: cancel, expire without evidence, expire unruled, sett
 | --- | --- |
 | `contract.py` | Documented contract |
 | `contract_deploy.py` | Generated file to paste into GenLayer Studio |
+| `contract_testnet_deploy.py` | Same contract with short time windows, used for the live tests |
+| `TESTNET_TESTS.md` | Record of the live tests: wallets, results and transaction hashes |
 | `tools/make_deploy.py` | Builds the deploy file using `ast` and `tokenize` |
 | `index.html` | Single-file frontend (genlayer-js from esm.sh) |
 | `tests/` | Offline tests with a self-written SDK stub |
@@ -95,7 +97,24 @@ Views: `get_bounty`, `list_bounties`, `get_stats`, `total_bounties`, `get_pr_cla
 
 ## Status
 
-Offline tests cover the state machine, the GitHub extraction and assessment logic, payouts and the jury. Live behaviour (real model answers, real consensus, real GEN transfers) must be verified on GenLayer Studio. See `ARCHITECTURE.md` for known limitations.
+Offline tests cover the state machine, the GitHub extraction and assessment logic, payouts and the jury. The contract has also been run live on GenLayer Studio with real GitHub evidence, real consensus and real GEN transfers.
+
+### Live test results
+
+The time-gated paths were run on `contract_testnet_deploy.py`, a copy of the contract with short windows (5-minute appeal window, 15-minute commit and reveal, 1-hour resolution timeout). Only the time constants differ.
+
+| Path | Result |
+| --- | --- |
+| Appeal, jury draw, commit-reveal, `settle_jury` | Passed, payouts matched the rules to the wei |
+| `settle_unappealed` and `withdraw` | Passed |
+| Open pull request that closes the issue | PARTIALLY_DELIVERED, pull request claimed |
+| Pull request without a closing link | UNDETERMINED |
+| `expire_no_evidence` | UNDETERMINED, both deposits refunded |
+| `expire_unruled` | UNDETERMINED, both deposits refunded |
+| One pull request offered to two bounties | Earlier bounty took the claim; the later one was refunded at settlement |
+| `recover_stuck_appeal` | Not run live, reviewed in code only |
+
+After every run the contract balance returned to zero. The frontend has not been tested with a real wallet. The full record, including transaction hashes, is in `TESTNET_TESTS.md`. See `ARCHITECTURE.md` for known limitations.
 
 ## License
 
