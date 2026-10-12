@@ -149,6 +149,11 @@
     <p class="hint">Generates a throwaway account for this tab. Good for reading and for trying the flow with a fresh address.</p>
     <button class="ghost" id="connTest">Start test session</button>
     <div class="out" id="connOut"></div>
+    <div id="connAddrBox" hidden>
+      <h3 style="margin-top:22px">Connected address</h3>
+      <p id="connAddr" style="word-break:break-all;user-select:all;font-family:monospace;font-size:13px;margin:8px 0"></p>
+      <button class="secondary" id="connCopy">Copy address</button>
+    </div>
     <button class="ghost" id="connDisconnect" hidden>Disconnect</button>
   </div>
 </div>
@@ -404,6 +409,8 @@ function setStatus(on, label) {
 const sheet = $("walletSheet");
 function openSheet() {
   $("connDisconnect").hidden = !client;
+  $("connAddrBox").hidden = !account;
+  $("connAddr").textContent = account || "";
   $("connOut").style.display = "none";
   sheet.hidden = false;
 }
@@ -457,6 +464,10 @@ $("connInjected").addEventListener("click", connectInjected);
 $("connKey").addEventListener("click", connectKey);
 $("connTest").addEventListener("click", startTestSession);
 $("connDisconnect").addEventListener("click", disconnect);
+$("connCopy").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(String(account || "")); $("connCopy").textContent = "Copied"; } catch (e) { $("connCopy").textContent = "Select the address above and copy it"; }
+  setTimeout(() => { $("connCopy").textContent = "Copy address"; }, 2000);
+});
 
 function needClient(out) {
   if (client) return true;
