@@ -252,6 +252,11 @@ def web_for(pages):
     return render
 
 
+MODEL_DELIVERED = {"outcome": "BOUNTY_DELIVERED", "reasoning": "criteria met"}
+MODEL_PARTIAL = {"outcome": "PARTIALLY_DELIVERED", "reasoning": "substantive work"}
+MODEL_UNDETERMINED = {"outcome": "UNDETERMINED", "reasoning": "thin evidence"}
+
+
 def adjudicate(c, bounty_id, pages, model=None, prompts=None, caller=STRANGER_ADDRESS):
     """Run adjudicate with the given fetch results and model answer.
     `model` is a dict, an Exception instance to raise, or None (the model

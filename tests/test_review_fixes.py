@@ -8,7 +8,7 @@ from _bootstrap import (
     m, gl, CLOCK, DAY, BASE, BASE_EPOCH, PARTY_A_ADDRESS, PARTY_B_ADDRESS, STRANGER_ADDRESS, REPO, REWARD, BOND,
     make_contract, set_caller, create_bounty, accept_bounty, locked_bounty, ruled_bounty, active_bounty, get, pending,
     pass_deadline, pass_appeal_window, adjudicate, pr_json, open_pr_json, search_json, pr_url, search_url, gh_ts,
-    submit_and_lock, expect_user_error, assess, anchors,
+    submit_and_lock, expect_user_error, assess, anchors, MODEL_DELIVERED,
 )
 
 D, P, N, U = m.OUT_DELIVERED, m.OUT_PARTIAL, m.OUT_NOT_DELIVERED, m.OUT_UNDETERMINED
@@ -39,7 +39,7 @@ class TestPrOpenedBeforeTheBounty(unittest.TestCase):
     def test_end_to_end_an_old_pull_request_cannot_win_a_bounty(self):
         c = make_contract()
         pages = {pr_url(7): pr_json(7, created_at=gh_ts(BASE_EPOCH - 5 * DAY))}
-        bid = ruled_bounty(c, pages=pages, model=None)
+        bid = ruled_bounty(c, pages=pages, model=MODEL_DELIVERED)
         self.assertNotEqual(get(c, bid)["tier1_outcome"], D)
         self.assertEqual(c.get_pr_claim(REPO, 7), "")
 
@@ -55,7 +55,7 @@ class TestSearchIndexLag(unittest.TestCase):
         bid = self.locked()
         pass_deadline(self.c, bid)
         with self.assertRaises(gl.vm.UserError):
-            adjudicate(self.c, bid, {search_url(): search_json(0)}, model=None)
+            adjudicate(self.c, bid, {search_url(): search_json(0)}, model=MODEL_DELIVERED)
         self.assertEqual(get(self.c, bid)["status"], "evidence_locked")
 
     def test_absence_a_day_after_the_deadline_counts(self):
@@ -70,7 +70,7 @@ class TestSearchIndexLag(unittest.TestCase):
         deadline = datetime.datetime.fromisoformat(get(self.c, bid)["deadline"])
         CLOCK.set(deadline + datetime.timedelta(seconds=m.ABSENCE_LAG_SECONDS - 1))
         with self.assertRaises(gl.vm.UserError):
-            adjudicate(self.c, bid, {search_url(): search_json(0)}, model=None)
+            adjudicate(self.c, bid, {search_url(): search_json(0)}, model=MODEL_DELIVERED)
 
     def test_a_late_pull_request_needs_no_lag(self):
         c = make_contract()
@@ -119,7 +119,7 @@ class TestCopycatCannotHoldAPullRequestHostage(unittest.TestCase):
         for who in parties:
             self.lock(bid, who)
         pass_deadline(self.c, bid)
-        return adjudicate(self.c, bid, self.pages, model=None)
+        return adjudicate(self.c, bid, self.pages, model=MODEL_DELIVERED)
 
     def test_the_copy_claims_first_but_the_earlier_real_bounty_takes_it_back(self):
         self.rule(self.copy, (self.ATTACKER_2, self.ATTACKER))
@@ -178,8 +178,8 @@ class TestCopycatCannotHoldAPullRequestHostage(unittest.TestCase):
         set_caller(self.ATTACKER)
         c.submit_evidence(second, [pr_url(7)])
         pass_deadline(c, first)
-        adjudicate(c, second, self.pages, model=None)
-        earlier = adjudicate(c, first, self.pages, model=None)
+        adjudicate(c, second, self.pages, model=MODEL_DELIVERED)
+        earlier = adjudicate(c, first, self.pages, model=MODEL_DELIVERED)
         self.assertEqual(earlier["tier1_outcome"], D)
         self.assertEqual(c.get_pr_claim(REPO, 7), first)
 

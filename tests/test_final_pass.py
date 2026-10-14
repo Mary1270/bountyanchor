@@ -14,7 +14,7 @@ class TestClaimPriority(unittest.TestCase):
     def test_partial_by_maintainer_silence_claims_the_pending_pull_request_not_an_unlinked_one(self):
         c = make_contract()
         pages = {pr_url(3): pr_json(3, body="unrelated cleanup"), pr_url(9): open_pr_json(9)}
-        bid = ruled_bounty(c, pages=pages, model=None)
+        bid = ruled_bounty(c, pages=pages, model={"outcome": P})
         b = get(c, bid)
         self.assertEqual((b["tier1_outcome"], b["claimed_pr_key"]), (P, f"{REPO}#9"))
         self.assertEqual(c.get_pr_claim(REPO, 3), "")

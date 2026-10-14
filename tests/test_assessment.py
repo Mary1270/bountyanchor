@@ -274,9 +274,13 @@ class TestModelNeeded(unittest.TestCase):
         self.assertTrue(m._model_needed(self.a(delivered_prs=[7]), True))
         self.assertTrue(m._model_needed(self.a(delivered_prs=[7]), False))
 
-    def test_pending_is_pure_code(self):
-        self.assertFalse(m._model_needed(self.a(pending_prs=[7]), False))
+    def test_pending_needs_the_merit_check_after_the_deadline_only(self):
+        self.assertTrue(m._model_needed(self.a(pending_prs=[7]), False))
         self.assertFalse(m._model_needed(self.a(pending_prs=[7], non_delivery_supported=False), True))
+
+    def test_no_merit_check_without_the_model_window(self):
+        self.assertFalse(m._model_needed(self.a(delivered_prs=[7]), False, model_allowed=False))
+        self.assertFalse(m._model_needed(self.a(pending_prs=[7]), False, model_allowed=False))
 
     def test_non_delivery_needs_the_model_only_after_the_deadline(self):
         self.assertTrue(m._model_needed(self.a(non_delivery_supported=True, failed_prs=[7]), False))
@@ -296,10 +300,10 @@ class TestDecisionTable(unittest.TestCase):
     def a(self, **over):
         return TestModelNeeded().a(**over)
 
-    def test_proven_delivery_stands_when_the_model_agrees_or_abstains(self):
+    def test_proven_delivery_is_paid_in_full_only_on_an_affirmative_model_answer(self):
         a = self.a(delivered_prs=[7])
         self.assertEqual(m._decide(a, self.D), self.D)
-        self.assertEqual(m._decide(a, None), self.D)
+        self.assertEqual(m._decide(a, None), self.U)
 
     def test_the_model_may_only_downgrade_a_proven_delivery(self):
         a = self.a(delivered_prs=[7])
@@ -307,15 +311,17 @@ class TestDecisionTable(unittest.TestCase):
         self.assertEqual(m._decide(a, self.U), self.U)
         self.assertEqual(m._decide(a, self.N), self.U)
 
-    def test_pending_is_partial_whatever_the_model_says(self):
+    def test_pending_is_partial_only_on_an_affirmative_model_answer(self):
         a = self.a(pending_prs=[7])
-        for claim in (None, self.D, self.P, self.N, self.U):
+        self.assertEqual(m._decide(a, self.P), self.P)
+        for claim in (None, self.D, self.N, self.U):
             with self.subTest(claim=claim):
-                self.assertEqual(m._decide(a, claim), self.P)
+                self.assertEqual(m._decide(a, claim), self.U)
 
     def test_pending_with_supposed_non_delivery_is_still_never_not_delivered(self):
         a = self.a(pending_prs=[7], non_delivery_supported=True)
-        self.assertEqual(m._decide(a, self.N), self.P)
+        for claim in (None, self.N, self.D, self.U):
+            self.assertNotEqual(m._decide(a, claim), self.N)
 
     def test_not_delivered_needs_code_support_and_the_model(self):
         self.assertEqual(m._decide(self.a(non_delivery_supported=True), self.N), self.N)

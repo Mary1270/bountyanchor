@@ -5,7 +5,7 @@ from _bootstrap import (
     late_pr_json,
     m, gl, CLOCK, DAY, PARTY_A_ADDRESS, PARTY_B_ADDRESS, STRANGER_ADDRESS, REPO, REWARD, BOND,
     make_contract, set_caller, create_bounty, accept_bounty, locked_bounty, ruled_bounty, get, pending, pass_deadline,
-    pass_appeal_window, adjudicate, pr_json, open_pr_json, search_json, pr_url, search_url,
+    pass_appeal_window, adjudicate, MODEL_PARTIAL, pr_json, open_pr_json, search_json, pr_url, search_url,
 )
 
 D, P, N, U = m.OUT_DELIVERED, m.OUT_PARTIAL, m.OUT_NOT_DELIVERED, m.OUT_UNDETERMINED
@@ -13,7 +13,7 @@ CLOSED = dict(merged=False, merged_at=None, state="closed")
 
 SCENARIOS = {
     D: ({pr_url(7): pr_json(7)}, {"outcome": D}),
-    P: ({pr_url(7): open_pr_json(7)}, None),
+    P: ({pr_url(7): open_pr_json(7)}, {"outcome": P}),
     N: ({pr_url(7): late_pr_json(7)}, {"outcome": N}),
     U: ({pr_url(7): pr_json(7, body="no closing link")}, None),
 }
@@ -195,9 +195,9 @@ class TestRecoveryPaths(unittest.TestCase):
     def test_a_bounty_that_cannot_be_ruled_early_can_still_be_ruled_after_the_deadline(self):
         bid = locked_bounty(self.c, urls=[pr_url(7)], both=True)
         with self.assertRaises(gl.vm.UserError):
-            adjudicate(self.c, bid, {pr_url(7): open_pr_json(7)}, model=None)
+            adjudicate(self.c, bid, {pr_url(7): open_pr_json(7)}, model=MODEL_PARTIAL)
         pass_deadline(self.c, bid)
-        self.assertEqual(adjudicate(self.c, bid, {pr_url(7): open_pr_json(7)}, model=None)["tier1_outcome"], P)
+        self.assertEqual(adjudicate(self.c, bid, {pr_url(7): open_pr_json(7)}, model=MODEL_PARTIAL)["tier1_outcome"], P)
 
 
 if __name__ == "__main__":

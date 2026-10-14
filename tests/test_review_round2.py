@@ -10,7 +10,7 @@ from _bootstrap import (
     m, gl, CLOCK, DAY, BASE, BASE_EPOCH, PARTY_A_ADDRESS, PARTY_B_ADDRESS, STRANGER_ADDRESS, REPO, REWARD, BOND,
     make_contract, set_caller, call_payable, create_bounty, accept_bounty, locked_bounty, active_bounty, get, pending,
     pass_deadline, pass_appeal_window, adjudicate, pr_json, open_pr_json, search_json, pr_url, search_url,
-    expect_user_error, JUROR_ADDRESSES, register_jurors,
+    expect_user_error, JUROR_ADDRESSES, register_jurors, MODEL_DELIVERED,
 )
 
 D, P, N, U = m.OUT_DELIVERED, m.OUT_PARTIAL, m.OUT_NOT_DELIVERED, m.OUT_UNDETERMINED
@@ -210,7 +210,7 @@ class ClaimWorld:
         self.deposited = count * (REWARD + BOND)
 
     def rule(self, index):
-        return adjudicate(self.c, self.ids[index], self.pages, model=None)
+        return adjudicate(self.c, self.ids[index], self.pages, model=MODEL_DELIVERED)
 
     def settle_all(self):
         for bid in self.ids:

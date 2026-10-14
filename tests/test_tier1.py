@@ -60,13 +60,17 @@ class TestProvenDelivery(Base):
         self.assertEqual(b["claimed_pr_key"], "acme/widgets#7")
         self.assertEqual(self.c.get_pr_claim(REPO, 7), bid)
 
-    def test_model_abstaining_does_not_void_a_proven_delivery(self):
+    def test_model_silence_never_authorises_full_payment_and_records_nothing(self):
         for mdl in ({}, {"outcome": "gibberish"}, {"outcome": None}, "not json", RuntimeError("model down"), {"reasoning": "x"}):
             with self.subTest(mdl=mdl):
                 self.setUp()
-                _, b, _ = self.run_case({pr_url(7): pr_json(7)}, mdl)
-                self.assertEqual(b["tier1_outcome"], D)
-                self.assertIn("passed every structured check", b["tier1_reasoning"])
+                bid = locked_bounty(self.c, urls=[pr_url(7)], both=True)
+                pass_deadline(self.c, bid)
+                with self.assertRaises(gl.vm.UserError) as ctx:
+                    adjudicate(self.c, bid, {pr_url(7): pr_json(7)}, model=mdl)
+                self.assertIn("merit check could not be completed", str(ctx.exception))
+                self.assertEqual(get(self.c, bid)["status"], "evidence_locked")
+                self.assertEqual(self.c.get_pr_claim(REPO, 7), "")
 
     def test_model_saying_partial_downgrades(self):
         _, b, _ = self.run_case({pr_url(7): pr_json(7)}, model(P, "no tests"))
@@ -150,34 +154,56 @@ class TestBackstop(Base):
             adjudicate(self.c, bid, {pr_url(7): None}, model=None, prompts=prompts)
         self.assertEqual((get(self.c, bid)["status"], prompts), ("evidence_locked", []))
 
-    def test_late_merge_with_model_insisting_on_delivery_is_partial_by_code(self):
-        _, b, _ = self.run_case({pr_url(7): pr_json(7, merged_at=gh_ts(DEADLINE_EPOCH + 3600))}, None)
-        self.assertEqual(b["tier1_outcome"], P)
+    def test_late_merge_with_model_insisting_on_delivery_is_never_delivered(self):
+        _, b, prompts = self.run_case({pr_url(7): pr_json(7, merged_at=gh_ts(DEADLINE_EPOCH + 3600))}, model(D))
+        self.assertEqual(b["tier1_outcome"], U)
+        self.assertIn("PENDING_PRS: [7]", prompts[0])
 
 
 class TestMaintainerSilence(Base):
-    def test_open_pull_request_after_the_deadline_is_partial_without_asking_the_model(self):
-        bid, b, prompts = self.run_case({pr_url(7): open_pr_json(7)}, None)
+    def test_open_pull_request_after_the_deadline_is_partial_only_when_the_merit_check_affirms(self):
+        bid, b, prompts = self.run_case({pr_url(7): open_pr_json(7)}, model(P, "substantive"))
         self.assertEqual(b["tier1_outcome"], P)
-        self.assertEqual(prompts, [])
-        self.assertIn("Maintainer silence is not contributor breach", b["tier1_reasoning"])
+        self.assertEqual(len(prompts), MODEL_CALLS)
+        self.assertIn("PENDING_PRS: [7]", prompts[0])
         self.assertEqual(b["claimed_pr_key"], "acme/widgets#7")
         self.assertEqual(b["tier1_assessment"]["pending_prs"], [7])
 
+    def test_open_pull_request_with_a_negative_merit_check_is_refunded(self):
+        for mdl in (model(U, "trivial"), model(N), model(D)):
+            with self.subTest(mdl=mdl):
+                self.setUp()
+                _, b, _ = self.run_case({pr_url(7): open_pr_json(7)}, mdl)
+                self.assertEqual(b["tier1_outcome"], U)
+                self.assertEqual(b["claimed_pr_key"], "")
+                self.assertIn("no partial payment is authorised", b["tier1_reasoning"])
+
+    def test_open_pull_request_with_no_model_answer_is_not_recorded(self):
+        for mdl in ({}, RuntimeError("down"), "not json"):
+            with self.subTest(mdl=mdl):
+                self.setUp()
+                bid = locked_bounty(self.c, urls=[pr_url(7)], both=True)
+                pass_deadline(self.c, bid)
+                with self.assertRaises(gl.vm.UserError):
+                    adjudicate(self.c, bid, {pr_url(7): open_pr_json(7)}, model=mdl)
+                self.assertEqual(get(self.c, bid)["status"], "evidence_locked")
+
     def test_it_can_never_be_not_delivered(self):
         pages = {pr_url(7): open_pr_json(7), search_url(): search_json(0)}
-        bid, b, prompts = self.run_case(pages, None)
-        self.assertEqual(b["tier1_outcome"], P)
-        self.assertEqual(prompts, [])
+        for mdl in (model(P), model(N), model(U)):
+            with self.subTest(mdl=mdl):
+                self.setUp()
+                bid, b, prompts = self.run_case(pages, mdl)
+                self.assertNotEqual(b["tier1_outcome"], N)
+                self.assertNotIn("NOT_DELIVERED", prompts[0].split("Respond ONLY")[1])
 
-    def test_a_model_that_wants_not_delivered_is_never_even_consulted(self):
-        _, b, prompts = self.run_case({pr_url(7): open_pr_json(7)}, model(N))
-        self.assertEqual(prompts, [])
-        self.assertEqual(b["tier1_outcome"], P)
+    def test_a_model_that_wants_not_delivered_cannot_get_it_for_a_pending_pull_request(self):
+        _, b, _ = self.run_case({pr_url(7): open_pr_json(7)}, model(N))
+        self.assertEqual(b["tier1_outcome"], U)
 
     def test_late_merge_is_also_partial(self):
-        _, b, prompts = self.run_case({pr_url(7): pr_json(7, merged_at=gh_ts(DEADLINE_EPOCH + 2 * DAY))}, None)
-        self.assertEqual((b["tier1_outcome"], prompts), (P, []))
+        _, b, prompts = self.run_case({pr_url(7): pr_json(7, merged_at=gh_ts(DEADLINE_EPOCH + 2 * DAY))}, model(P))
+        self.assertEqual((b["tier1_outcome"], len(prompts)), (P, MODEL_CALLS))
 
     def test_before_the_deadline_the_open_pull_request_cannot_be_ruled_on_yet(self):
         bid = locked_bounty(self.c, urls=[pr_url(7)], both=True)
@@ -188,7 +214,7 @@ class TestMaintainerSilence(Base):
         self.assertEqual(get(self.c, bid)["status"], "evidence_locked")
         self.assertEqual(self.c.get_pr_claim(REPO, 7), "")
         pass_deadline(self.c, bid)
-        self.assertEqual(adjudicate(self.c, bid, {pr_url(7): open_pr_json(7)}, model=None)["tier1_outcome"], P)
+        self.assertEqual(adjudicate(self.c, bid, {pr_url(7): open_pr_json(7)}, model=model(P))["tier1_outcome"], P)
 
     def test_a_draft_or_unlinked_pull_request_is_not_protected_by_the_rule(self):
         for data in (open_pr_json(7, draft=True), open_pr_json(7, body="no link")):
@@ -335,8 +361,8 @@ class TestClaimRegistry(Base):
 
     def test_a_partial_ruling_also_claims_the_pull_request(self):
         first, second = self.two([pr_url(7)], [pr_url(7)])
-        b1 = adjudicate(self.c, first, {pr_url(7): open_pr_json(7)}, model=None)
-        b2 = adjudicate(self.c, second, {pr_url(7): open_pr_json(7)}, model=None)
+        b1 = adjudicate(self.c, first, {pr_url(7): open_pr_json(7)}, model=model(P))
+        b2 = adjudicate(self.c, second, {pr_url(7): open_pr_json(7)}, model=model(P))
         self.assertEqual((b1["tier1_outcome"], b2["tier1_outcome"]), (P, U))
 
     def test_the_first_unclaimed_candidate_is_used(self):
@@ -504,10 +530,10 @@ class TestConsensusAgreement(unittest.TestCase):
 
     def test_pure_code_results_need_no_model_on_either_side(self):
         ctx = {"bounty": self.b, "urls": [pr_url(7)], "before_deadline": False}
-        with patch.object(gl.nondet.web, "render", side_effect=web_for({pr_url(7): open_pr_json(7)})), \
+        with patch.object(gl.nondet.web, "render", side_effect=web_for({pr_url(7): pr_json(7, body="no closing link")})), \
                 patch.object(gl.nondet, "exec_prompt", side_effect=AssertionError("no model")):
             leader = json.loads(json.dumps(m._tier1_compute(ctx)))
-            self.assertEqual((leader["outcome"], leader["model_used"]), (P, False))
+            self.assertEqual((leader["outcome"], leader["model_used"]), (U, False))
             self.assertTrue(m._tier1_validator(gl.vm.Return(leader), ctx))
 
 

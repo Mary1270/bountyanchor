@@ -432,15 +432,12 @@ class TestSettleJury(unittest.TestCase):
         stake_after = sum(int(json.loads(self.c.get_juror(a))["stake"]) for a in JUROR_ADDRESSES[:6])
         self.assertEqual(ledger + stake_after, REWARD + BOND + APPEAL_BOND + stake_before)
 
-    def test_maintainer_silence_cannot_be_appealed_and_keeps_its_claim(self):
+    def test_maintainer_silence_keeps_its_claim_and_the_jury_cannot_award_breach(self):
         from _bootstrap import PaymentRejected
         register_jurors(self.c, 6)
-        bid = ruled_bounty(self.c, pages={pr_url(7): open_pr_json(7)}, model=None)
+        bid = ruled_bounty(self.c, pages={pr_url(7): open_pr_json(7)}, model={"outcome": P})
         self.assertEqual(self.c.get_pr_claim(REPO, 7), bid)
-        set_caller(PARTY_A_ADDRESS)
-        with self.assertRaises(PaymentRejected):
-            call_payable(self.c, "file_appeal", APPEAL_BOND, bid)
-        self.assertEqual(self.c.get_pr_claim(REPO, 7), bid)
+        self.assertEqual(json.loads(self.c.get_jury_options(bid)), sorted([P, U]))
 
     def test_an_overturn_to_partial_claims_the_pull_request(self):
         pages = {pr_url(7): pr_json(7, body="no closing link")}

@@ -94,12 +94,9 @@ class TestTheJuryCanCorrectTierOneWithinCodeBounds(unittest.TestCase):
     def test_the_jury_cannot_turn_maintainer_silence_into_breach(self):
         c = make_contract()
         register_jurors(c, 6)
-        bid = ruled_bounty(c, pages={pr_url(7): open_pr_json(7)}, model=None)
+        bid = ruled_bounty(c, pages={pr_url(7): open_pr_json(7)}, model={"outcome": P})
         self.assertEqual(get(c, bid)["tier1_outcome"], P)
-        set_caller(PARTY_A_ADDRESS)
-        with self.assertRaises(PaymentRejected):
-            call_payable(c, "file_appeal", APPEAL_BOND, bid)
-        self.assertEqual(get(c, bid)["status"], "ruled")
+        self.assertEqual(json.loads(c.get_jury_options(bid)), sorted([P, U]))
 
     def test_the_options_view_lists_what_a_jury_may_decide(self):
         c = make_contract()
@@ -177,14 +174,17 @@ class TestCodeOnlyRulingAfterTheModelWindow(unittest.TestCase):
         self.assertEqual(b["tier1_outcome"], P)
         self.assertTrue(prompts)
 
-    def test_after_the_window_a_proven_delivery_stands_without_the_model(self):
+    def test_after_the_window_a_proven_delivery_is_refunded_not_paid_without_the_model(self):
         from _bootstrap import adjudicate
         pages = {pr_url(7): pr_json(7)}
         c, bid, deadline = self.locked(pages)
         CLOCK.set(deadline + datetime.timedelta(seconds=m.MODEL_WINDOW_SECONDS + 1))
-        b = adjudicate(c, bid, pages, model=None)
-        self.assertEqual(b["tier1_outcome"], D)
-        self.assertFalse(b["tier1_assessment"] is None)
+        prompts = []
+        b = adjudicate(c, bid, pages, model=None, prompts=prompts)
+        self.assertEqual(b["tier1_outcome"], U)
+        self.assertEqual(prompts, [])
+        self.assertIn("no merit check", b["tier1_reasoning"])
+        self.assertEqual(json.loads(c.get_jury_options(bid)), sorted([D, P, U]))
 
     def test_after_the_window_breach_is_impossible_and_the_case_still_closes(self):
         from _bootstrap import adjudicate, late_pr_json
