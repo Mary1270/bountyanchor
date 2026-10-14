@@ -1,6 +1,6 @@
 # Live test record
 
-All runs were made in GenLayer Studio with `contract_testnet_deploy.py`, which differs from `contract_deploy.py` only in its time constants (see the diff table below). Contract address of the test deployment: `0x1d53e9A4ADE1D751d9403ccfeC5eA2393ffF1aa8`. The production-window deployment is `0x2608a47d0b6A2e7606cd4C89d23Db12f14B1bc97`.
+Revision note: the runs in the sections "Results" and "Transactions" were made on the first revision of the contract. `contract_testnet_deploy.py` in the repository is revision 2 (steward corrections: merit check required for every payout to the contributor), which was deployed separately and tested live in the last section ("Revision 2 live test"). The first-revision runs were made in GenLayer Studio with the first-revision copy of `contract_testnet_deploy.py`, which differs from `contract_deploy.py` only in its time constants (see the diff table below). Contract address of the test deployment: `0x1d53e9A4ADE1D751d9403ccfeC5eA2393ffF1aa8`. The first-revision production-window deployment is `0x2608a47d0b6A2e7606cd4C89d23Db12f14B1bc97`; revision 2 is deployed at `0xe90E6535b7319101128aEC98b98602f7335739a2`.
 
 ## Time constants
 
@@ -86,7 +86,7 @@ Hashes are shortened exactly as GenLayer Studio displays them. Full hashes are v
 
 ## Frontend test on the production contract
 
-Run from the GitHub Pages frontend with two throwaway test-session accounts (sponsor `0x7B17E2ec...458E`, contributor `0x0EecFF5c...D33B`) against `0x2608a47d0b6A2e7606cd4C89d23Db12f14B1bc97`.
+Run from the GitHub Pages frontend with two throwaway test-session accounts (sponsor `0x7B17E2ec...458E`, contributor `0x0EecFF5c...D33B`) against the first-revision production contract `0x2608a47d0b6A2e7606cd4C89d23Db12f14B1bc97`.
 
 | Step | Result |
 | --- | --- |
@@ -96,3 +96,14 @@ Run from the GitHub Pages frontend with two throwaway test-session accounts (spo
 | Create bounty (bounty_5) and accept from the contributor account | Status Accepted, collecting evidence |
 
 bounty_5 is left open on the production contract.
+
+## Revision 2 live test
+
+Contract `0xCDB499963a6796cF0A450D0eA8EC7B20be270BDE` (short-window build of revision 2). Sponsor `0xf73699c4...148Ffd`, contributor `0x72BE82aD...BDF73bc6`. Two bounties with the same completion criteria (a CONTRIBUTING.md explaining how to run the offline test suite), reward 1 GEN, bond 100%, partial share 50%, each pointing at one open pull request opened after the bounty was created and linked to the anchored issue.
+
+| Bounty | Pull request | Change | Outcome | Reason recorded by the merit check |
+| --- | --- | --- | --- | --- |
+| bounty_0 | #11 "Add contributing guide" | 1 file, 14 additions | PARTIALLY_DELIVERED, pull request claimed | Consistent with a substantive CONTRIBUTING.md addressing the criteria |
+| bounty_1 | #12 "Fix typo" | 1 file, 1 addition, 1 deletion | UNDETERMINED, no claim, both deposits refunded | Trivial or cosmetic change that does not address the criteria |
+
+Both pull requests stayed open and unmerged. Settlement and withdrawals are recorded below once run.

@@ -341,11 +341,15 @@ def _pr_verdict(pr, b) -> dict:
                   A pull request opened before the bounty existed never
                   counts: the bounty pays for work done after it was posted.
       pending   : right repo, base and author; opened on or before the
-                  deadline; not a draft; closes the anchored issue; and
-                  still open or merged only after the deadline. The
-                  maintainer, not the contributor, has not acted.
+                  deadline; not a draft; closes the anchored issue; carries
+                  a non-empty change (at least one changed file and one
+                  changed line); and still open or merged only after the
+                  deadline. The maintainer, not the contributor, has not
+                  acted. Pending alone pays nothing: partial payment also
+                  needs an affirmative merit answer (see _decide).
       ambiguous : would be delivered or pending except that it does not
-                  close the anchored issue.
+                  close the anchored issue, or is an empty or unmeasurable
+                  change.
       rejected  : the contributor's pull request, opened in the window,
                   that is closed unmerged, targets another branch or is a
                   draft. A maintainer can cause every one of these (close,
@@ -370,13 +374,16 @@ def _pr_verdict(pr, b) -> dict:
     opened_after = created_at is not None and created_at >= int(b["created_epoch"])
     draft = bool(pr.get("draft"))
     linked = bool(pr.get("closes_issue"))
+    files = pr.get("changed_files")
+    lines = (pr.get("additions"), pr.get("deletions"))
+    substantive = files is not None and files >= 1 and None not in lines and lines[0] + lines[1] >= 1
     deliver_core = core and opened_after and in_window
     pending_core = core and opened_after and on_time and not draft and (open_pr or late_merge)
     if not (repo_ok and author_ok) or not opened_after:
         verdict = "unrelated"
     elif deliver_core and linked:
         verdict = "delivered"
-    elif pending_core and linked:
+    elif pending_core and linked and substantive:
         verdict = "pending"
     elif deliver_core or pending_core:
         verdict = "ambiguous"
@@ -395,6 +402,7 @@ def _pr_verdict(pr, b) -> dict:
         "in_window": in_window,
         "on_time": on_time,
         "draft": draft,
+        "substantive": substantive,
         "state": pr.get("state", ""),
         "verdict": verdict,
     }
@@ -481,19 +489,22 @@ def _needs_retry(a) -> bool:
 
 
 def _model_needed(a, before_deadline, model_allowed=True) -> bool:
-    """The model is consulted only where code alone cannot decide: the merit
-    of a delivery whose structure is proven, or whether proven non-delivery
-    should be called NOT_DELIVERED. Every other verdict is pure code.
-    After MODEL_WINDOW_SECONDS past the deadline the model is no longer
-    consulted at all, so a case whose validators keep disagreeing on a
-    model answer still gets a code-only ruling (a proven delivery stands,
-    NOT_DELIVERED becomes impossible) instead of being stuck."""
+    """The model is consulted wherever code alone cannot decide: the merit
+    of a merged pull request whose structure is proven, the merit of a
+    pending (unmerged) pull request, or whether proven non-delivery should
+    be called NOT_DELIVERED. Every other verdict is pure code. After
+    MODEL_WINDOW_SECONDS past the deadline the model is no longer consulted
+    at all: a case whose validators keep disagreeing on a model answer then
+    gets a code-only ruling that never pays for unjudged work (UNDETERMINED,
+    each side refunded, jury still open) instead of being stuck."""
     if not model_allowed:
         return False
     if a["delivered_prs"]:
         return True
-    if before_deadline or a["pending_prs"]:
+    if before_deadline:
         return False
+    if a["pending_prs"]:
+        return True
     return bool(a["non_delivery_supported"])
 
 
@@ -509,23 +520,28 @@ def _apply_backstop(claim, a):
 def _decide(a, claim) -> str:
     """Final outcome from the structured assessment and the (already
     backstopped) model claim, which is None when the model gave no usable
-    answer or was not consulted.
-      - Proven delivery stands unless the model objects: PARTIALLY_DELIVERED
-        if it says the criteria are only partly met, UNDETERMINED if it
-        says it cannot tell or that nothing was delivered.
+    answer or was not consulted. No payout to the contributor is ever
+    authorised by silence of the model.
+      - A proven delivery needs an affirmative merit answer: DELIVERED only
+        if the model says so, PARTIALLY_DELIVERED if it says the criteria
+        are partly met, otherwise UNDETERMINED (it said it cannot tell, said
+        nothing was delivered, or gave no answer).
       - A pending pull request (maintainer silence, not contributor breach)
-        is PARTIALLY_DELIVERED by code, whatever the model said. It is
-        never NOT_DELIVERED.
+        is PARTIALLY_DELIVERED only if the model affirms that the unmerged
+        work substantively addresses the criteria. Otherwise it is
+        UNDETERMINED. It is never NOT_DELIVERED.
       - NOT_DELIVERED needs code-supported non-delivery AND the model.
       - Everything else is UNDETERMINED."""
     if a["delivered_prs"]:
-        if claim in (None, OUT_DELIVERED):
+        if claim == OUT_DELIVERED:
             return OUT_DELIVERED
         if claim == OUT_PARTIAL:
             return OUT_PARTIAL
         return OUT_UNDETERMINED
     if a["pending_prs"]:
-        return OUT_PARTIAL
+        if claim == OUT_PARTIAL:
+            return OUT_PARTIAL
+        return OUT_UNDETERMINED
     if a["non_delivery_supported"] and claim == OUT_NOT_DELIVERED:
         return OUT_NOT_DELIVERED
     return OUT_UNDETERMINED
@@ -545,11 +561,19 @@ def _numbers(values) -> str:
 
 def _code_reasoning(a, outcome) -> str:
     if outcome == OUT_DELIVERED:
-        return "Code: pull request " + _numbers(a["delivered_prs"]) + " passed every structured check (repository, base branch, author, merge time window, closing keyword for the anchored issue)."
-    if outcome == OUT_PARTIAL and a["pending_prs"]:
+        return "Code: pull request " + _numbers(a["delivered_prs"]) + " passed every structured check (repository, base branch, author, merge time window, closing keyword for the anchored issue) and the merit check affirmed the completion criteria."
+    if outcome == OUT_PARTIAL and a["pending_prs"] and not a["delivered_prs"]:
         return ("Code: pull request " + _numbers(a["pending_prs"]) + " by the anchored contributor targets the anchored base, "
                 "closes the anchored issue and was opened before the deadline, but is not merged inside the window. "
-                "Maintainer silence is not contributor breach, so the pot is split.")
+                "Maintainer silence is not contributor breach, and the merit check affirmed that the work substantively "
+                "addresses the criteria, so the pot is split.")
+    if outcome == OUT_UNDETERMINED and a["delivered_prs"]:
+        return ("Code: pull request " + _numbers(a["delivered_prs"]) + " passed the structured checks, but no merit check "
+                "affirmed the completion criteria, so full payment is not authorised. Each side is refunded; either party may ask the jury.")
+    if outcome == OUT_UNDETERMINED and a["pending_prs"]:
+        return ("Code: pull request " + _numbers(a["pending_prs"]) + " is pending (maintainer silence, not contributor breach), "
+                "but no merit check affirmed that the unmerged work substantively addresses the criteria, so no partial "
+                "payment is authorised. Each side is refunded; either party may ask the jury.")
     if outcome == OUT_PARTIAL:
         return "Pull request " + _numbers(a["delivered_prs"]) + " passed the structured checks but only part of the completion criteria is met."
     if outcome == OUT_NOT_DELIVERED:
@@ -571,12 +595,22 @@ def _build_prompt(b, pages, a, mode) -> str:
         task = (
             "Every structured check already passed in code for the pull request(s) listed under "
             "DELIVERED_PRS. Judge ONLY whether the work described by the pull request title, "
-            "description and size plausibly satisfies the COMPLETION CRITERIA. Answer "
-            f"{OUT_DELIVERED} unless the evidence clearly shows the criteria are not met. Answer "
-            f"{OUT_PARTIAL} if it clearly satisfies only part of them. Answer {OUT_UNDETERMINED} "
-            "only if the evidence is unreadable or contradictory."
+            "description and size satisfies the COMPLETION CRITERIA. Answer "
+            f"{OUT_DELIVERED} only if the evidence affirmatively shows the criteria are met. Answer "
+            f"{OUT_PARTIAL} if it affirmatively shows only part of them is met. Answer {OUT_UNDETERMINED} "
+            "if the evidence is thin, trivial, unreadable or contradictory."
         )
         allowed = [OUT_DELIVERED, OUT_PARTIAL, OUT_UNDETERMINED]
+    elif mode == "pending":
+        task = (
+            "The pull request(s) under PENDING_PRS pass every structured check but are not merged "
+            "(the maintainer has not acted). Judge ONLY whether the work they describe, by title, "
+            "description and size, substantively addresses the COMPLETION CRITERIA. Answer "
+            f"{OUT_PARTIAL} only if the evidence affirmatively shows a substantive, relevant part of "
+            f"the criteria is addressed. Answer {OUT_UNDETERMINED} if the work looks trivial, "
+            "unrelated, empty, cosmetic, unreadable or contradictory. Never answer anything else."
+        )
+        allowed = [OUT_PARTIAL, OUT_UNDETERMINED]
     else:
         task = (
             "The structured checks found no delivery and no pending pull request. Answer "
@@ -594,7 +628,7 @@ def _build_prompt(b, pages, a, mode) -> str:
         f"ANCHORS (recorded on-chain before any dispute): repository {b['repo']}, base branch "
         f"{b['base_branch']}, issue #{b['issue_number']}, contributor {b['contributor_login']}.\n"
         f"BOUNTY CREATED (UTC): {b['created_at']}\nDEADLINE (UTC): {b['deadline']}\n\n"
-        f"DELIVERED_PRS: {a['delivered_prs']}\nCODE CHECKS PER PULL REQUEST: {json.dumps(a['reports'])}\n"
+        f"DELIVERED_PRS: {a['delivered_prs']}\nPENDING_PRS: {a['pending_prs']}\nCODE CHECKS PER PULL REQUEST: {json.dumps(a['reports'])}\n"
         f"NO-PR SEARCH PROVED ABSENCE: {a['absence_proven']}\n\n"
         f"EVIDENCE:\n{json.dumps(facts)}\n\n"
         f"{task}\nRespond ONLY as compact JSON: {{\"outcome\": one of {allowed}, "
@@ -626,7 +660,7 @@ def _tier1_compute(ctx):
     claim = None
     reasoning = ""
     if model_used:
-        mode = "merit" if a["delivered_prs"] else "nondelivery"
+        mode = "merit" if a["delivered_prs"] else ("pending" if a["pending_prs"] else "nondelivery")
         claim, reasoning = _ask_model(b, pages, a, mode)
     outcome = _premature_guard(_decide(a, _apply_backstop(claim, a)), before_deadline)
     if claim is None or not reasoning or outcome == OUT_UNDETERMINED:
@@ -636,6 +670,7 @@ def _tier1_compute(ctx):
         "reasoning": reasoning,
         "assessment": a,
         "model_used": model_used,
+        "model_answered": claim is not None or not (a["delivered_prs"] or a["pending_prs"]),
         "evidence_manifest": _manifest(pages),
         "frozen": pages,
     }
@@ -648,7 +683,7 @@ def _tier1_agree(leader, mine) -> bool:
     describes. Only the free-text reasoning may differ."""
     if not isinstance(leader, dict) or not isinstance(mine, dict):
         return False
-    for key in ("outcome", "model_used", "assessment"):
+    for key in ("outcome", "model_used", "model_answered", "assessment"):
         if leader.get(key) != mine.get(key):
             return False
     if not isinstance(leader.get("reasoning"), str) or len(leader["reasoning"]) > 2000:
@@ -668,7 +703,8 @@ def _jury_options(a, before_deadline):
     """Outcomes a jury may choose for this frozen evidence. The jury can
     correct Tier 1, but only inside what the structured facts permit:
       - a delivered pull request: DELIVERED, PARTIAL or UNDETERMINED
-      - maintainer silence (pending, nothing delivered): PARTIAL only
+      - maintainer silence (pending, nothing delivered): PARTIAL or
+        UNDETERMINED
       - a rejected pull request (closed, retargeted or draft by someone):
         NOT_DELIVERED, PARTIAL or UNDETERMINED
       - an unlinked but otherwise correct pull request: PARTIAL or
@@ -680,7 +716,7 @@ def _jury_options(a, before_deadline):
     if a["delivered_prs"]:
         options = [OUT_DELIVERED, OUT_PARTIAL, OUT_UNDETERMINED]
     elif a["pending_prs"]:
-        options = [OUT_PARTIAL]
+        options = [OUT_PARTIAL, OUT_UNDETERMINED]
     elif a.get("rejected_prs"):
         options = [OUT_NOT_DELIVERED, OUT_PARTIAL, OUT_UNDETERMINED]
     elif a["ambiguous_prs"]:
@@ -735,7 +771,11 @@ class BountyAnchor(gl.Contract):
       merged_at inside [bounty creation, deadline] (integer time math),
       title or body contains a closing keyword + the anchored issue number.
     A backstop in code forces any BOUNTY_DELIVERED claim to UNDETERMINED
-    unless a pull request passed every one of those checks. One pull
+    unless a pull request passed every one of those checks. Passing them
+    is necessary but not sufficient: full payment also needs an affirmative
+    merit answer from the model. If the model is unavailable the call
+    reverts and can be retried; after the model window the ruling is
+    UNDETERMINED (each side refunded) and the jury stays open. One pull
     request can settle only one bounty (the `pr_claims` registry).
 
     -------------------------------------------------------------------
@@ -743,9 +783,13 @@ class BountyAnchor(gl.Contract):
     -------------------------------------------------------------------
     A pull request by the right author on the right base, opened before the
     deadline, linked to the anchored issue and not a draft, that is still
-    open (or merged only after the deadline) resolves PARTIALLY_DELIVERED by
-    a deterministic code rule. It can never resolve NOT_DELIVERED. The pot
-    is split in the ratio the parties anchored at creation.
+    open (or merged only after the deadline), and that carries a non-empty
+    change, can resolve PARTIALLY_DELIVERED, but only when the merit check
+    affirms that the unmerged work substantively addresses the completion
+    criteria. Otherwise it resolves UNDETERMINED (each side refunded) and a
+    jury may still award the partial split. It can never resolve
+    NOT_DELIVERED. The pot is split in the ratio the parties anchored at
+    creation.
 
     -------------------------------------------------------------------
     MONEY
@@ -1328,6 +1372,11 @@ class BountyAnchor(gl.Contract):
 
         outcome = result["outcome"]
         reasoning = str(result.get("reasoning", ""))[:2000]
+        if result.get("model_used") and not result.get("model_answered"):
+            raise gl.vm.UserError(
+                "The merit check could not be completed (no usable model answer). Nothing was recorded; "
+                "try again later. After the model window a code-only ruling refunds both sides"
+            )
         frozen = [
             {
                 "url": str(p.get("url", ""))[:300],

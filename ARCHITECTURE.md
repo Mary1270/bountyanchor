@@ -14,25 +14,27 @@
 
 | Verdict | Meaning | Effect |
 | --- | --- | --- |
-| delivered | right repo, base and author; opened and merged inside [creation, deadline]; closes the issue | DELIVERED unless the model objects (PARTIAL or UNDETERMINED) |
-| pending | same, opened in time, not a draft, still open or merged late | PARTIALLY_DELIVERED by code |
-| ambiguous | would be delivered or pending but has no closing link | blocks NOT_DELIVERED |
+| delivered | right repo, base and author; opened and merged inside [creation, deadline]; closes the issue | DELIVERED only if the merit check affirms the criteria; PARTIAL if it affirms part; otherwise UNDETERMINED |
+| pending | same, opened in time, not a draft, non-empty change, still open or merged late | PARTIALLY_DELIVERED only if the merit check affirms substantive work; otherwise UNDETERMINED |
+| ambiguous | would be delivered or pending but has no closing link, or is an empty or unmeasurable change | UNDETERMINED; blocks NOT_DELIVERED |
 | rejected | the contributor's pull request opened in time but closed unmerged, retargeted or a draft | UNDETERMINED; a maintainer can cause each of these |
 | failed | the contributor's pull request opened after the deadline | supports NOT_DELIVERED |
 | unrelated | anyone else's, another repository, or opened before the bounty existed | ignored |
 
 NOT_DELIVERED needs code-supported non-delivery (a failed pull request, or the anchored search showing no pull request between creation and deadline, ruled at least 24 hours after the deadline) and the model's agreement. Anything else is UNDETERMINED.
 
+**No payment without a merit answer.** The model is consulted for every delivered or pending pull request. Silence of the model never pays: if it gives no usable answer, `adjudicate` reverts without recording anything and can be retried; after the model window it records UNDETERMINED (each side refunded) and the jury stays open. A BOUNTY_DELIVERED claim is accepted only for a pull request that passed every structured check, and a PARTIALLY_DELIVERED claim for a pending pull request only if it is non-empty and linked to the issue. The model cannot answer NOT_DELIVERED for a pending pull request.
+
 Validators re-fetch and re-run the same code and compare the outcome, whether the model was used, the full assessment and a manifest of decisive fields. They never compare raw page hashes. Full-content hashes are audit-only, and an evidence root commits to the manifest plus those hashes.
 
-**Model window.** The model is consulted only until 3 days after the deadline. If validators keep disagreeing on a model answer, a later call rules in code only: a proven delivery stands and NOT_DELIVERED becomes impossible. This keeps a case from being stuck until the 7-day refund.
+**Model window.** The model is consulted only until 3 days after the deadline. If validators keep disagreeing on a model answer, a later call rules in code only: nothing is paid on unjudged work (a delivered or pending pull request is UNDETERMINED, each side refunded), NOT_DELIVERED becomes impossible, and a jury may still decide within the permitted options. This keeps a case from being stuck until the 7-day refund.
 
 **Tier 2 (appeal).** Either party may appeal within the window by posting a bond, but only if the frozen evidence permits a different outcome (`get_jury_options`). The juror pool is snapshotted at appeal time and the jury is drawn from a drand round that did not exist yet, using integer-only weighted sampling anyone can replay (`verify_jury_selection`). Jurors commit a hash bound to their address and the bounty, then reveal. A strict majority of the selected jurors stands only if it is one of the permitted outcomes, checked in code on every validator against the frozen evidence:
 
 | Frozen evidence shows | Jury may choose |
 | --- | --- |
 | a delivered pull request | DELIVERED, PARTIAL, UNDETERMINED |
-| maintainer silence (pending) | PARTIAL only, so no appeal |
+| maintainer silence (pending) | PARTIAL, UNDETERMINED |
 | a rejected pull request | NOT_DELIVERED, PARTIAL, UNDETERMINED |
 | an unlinked pull request | PARTIAL, UNDETERMINED |
 | code-supported non-delivery | NOT_DELIVERED, UNDETERMINED |
@@ -44,7 +46,7 @@ So the jury can correct Tier 1, but can never award DELIVERED without a pull req
 
 ## 3. Maintainer actions and maintainer silence
 
-A sponsor may also maintain the repository. Silence (not merging) never counts against the contributor: a pending pull request resolves PARTIALLY_DELIVERED. Actions a maintainer can take on someone else's pull request (close it, retarget its base, convert it to a draft, edit its description) never produce an automatic NOT_DELIVERED either: such a pull request is "rejected", Tier 1 rules UNDETERMINED (each side refunded), and either party may ask the jury. Only facts the contributor alone controls support breach: no pull request opened in time, or a pull request opened after the deadline.
+A sponsor may also maintain the repository. Silence (not merging) never counts against the contributor: a pending pull request is never NOT_DELIVERED; it resolves PARTIALLY_DELIVERED when the merit check affirms substantive work, and UNDETERMINED (each side refunded, jury open) otherwise. Actions a maintainer can take on someone else's pull request (close it, retarget its base, convert it to a draft, edit its description) never produce an automatic NOT_DELIVERED either: such a pull request is "rejected", Tier 1 rules UNDETERMINED (each side refunded), and either party may ask the jury. Only facts the contributor alone controls support breach: no pull request opened in time, or a pull request opened after the deadline.
 
 ## 4. Claim registry
 
@@ -107,23 +109,23 @@ A sponsor may also maintain the repository. Silence (not merging) never counts a
 3. **Unauthenticated GitHub API.** Rate limits can make a fetch fail, which produces UNDETERMINED rather than a wrong verdict, but can delay resolution.
 4. **Search index lag and unreadable evidence (mitigated).** An empty "no pull request" search counts toward NOT_DELIVERED only if the ruling is at least 24 hours after the deadline. `adjudicate` does not record UNDETERMINED when the only reason is immature or unreadable evidence (an empty search inside the lag window, a fetch error, a rate-limit reply, invalid JSON, an incomplete search): it reverts, nothing is stored, and the same case can be ruled later. A closed, unmerged pull request by the contributor needs no wait. If evidence stays unreadable forever, `expire_unruled` refunds both sides 7 days after the later of the lock and the deadline. Search can still miss a pull request during a long GitHub index outage.
 5. **Pull requests opened before the bounty never count.** The bounty pays for work started after it was posted. A policy that accepts earlier work would need an explicit anchor; none exists in this version.
-6. **Merit is judged by a model.** Code proves the structure (author, base, merge window, closing link). Whether the change meets the completion criteria is a model judgment over the title, body and size, not a test run. It can only downgrade a proven delivery, never create one. CI status and commit checks are not used.
+6. **Merit is judged by a model.** Code proves the structure (author, base, merge window, closing link). Whether the change meets the completion criteria is a model judgment over the title, body and size, not a test run. The model can never create a delivery the code did not prove, and its silence or failure never authorises payment (see "No payment without a merit answer"). CI status and commit checks are not used.
 7. **Closing keyword regex.** It cannot see negation or code blocks ("does not fix #42" or a quoted example).
 8. **Stake model.** Juror weight is capped and reputation-scaled, but several wallets controlled by one person are not detected.
 9. **Jury threshold.** A strict majority of the selected jurors is needed. Low participation means the Tier-1 outcome stands and the appeal bond is returned.
 10. **drand and clock.** The jury draw trusts the public drand beacon for that round and relies on the validators' pinned transaction time.
 11. **Single evidence host.** Source diversity is replaced by distinct evidence items. Same-host duplicates are rejected, but all evidence still comes from api.github.com.
 12. **Claim held until settlement.** A claimed pull request stays claimed until the bounty is finally settled, unless an earlier bounty takes it over.
-13. **Stricter pending rule than the minimum.** A pending pull request must close the anchored issue and must not be a draft. A correct but unlinked pull request is "ambiguous" and resolves UNDETERMINED, not partial.
-14. **Late merge.** A pull request opened on time but merged after the deadline resolves PARTIALLY_DELIVERED, not delivered.
+13. **Stricter pending rule than the minimum.** A pending pull request must close the anchored issue, must not be a draft and must carry a non-empty, measurable change (at least one changed file and one changed line). A correct but unlinked, empty or unmeasurable pull request is "ambiguous" and resolves UNDETERMINED, not partial.
+14. **Late merge.** A pull request opened on time but merged after the deadline is judged like a pending one: PARTIALLY_DELIVERED if the merit check affirms substantive work, otherwise UNDETERMINED. It is never delivered.
 15. **Evidence revisions.** Each party can replace its list up to 3 times until the snapshot locks (which happens as soon as both have submitted).
 16. **A maintainer can cap a good delivery at PARTIALLY_DELIVERED by not merging before the deadline.** This follows from the rule that only a pull request merged inside the window is DELIVERED. Contributors should only accept bounties whose partial share they find acceptable, and the share is shown before acceptance.
 17. **A GitHub username change breaks the author match.** The login is anchored at creation; a renamed account no longer matches.
-18. **A junk pull request can force PARTIALLY_DELIVERED.** By design a correct-looking open pull request (right author and base, opened in the window, not a draft, closes the issue) is never NOT_DELIVERED. A contributor can open a trivial one to secure the partial split. The defence is the maintainer closing it unmerged before the ruling, which makes it a failed pull request.
+18. **A junk pull request cannot earn a partial reward by itself.** A correct-looking open pull request is never NOT_DELIVERED, but it also pays nothing until the merit check affirms that it substantively addresses the criteria; empty and unmeasurable changes are excluded in code. The merit check is a model judgment over the title, body and size, so a well-worded but shallow pull request could still pass it. The remedies are the maintainer closing it before the ruling, and an appeal, where a jury may reduce PARTIAL to UNDETERMINED.
 19. **Juror Sybil resistance comes from stake, not identity.** Registration needs only the minimum stake and is refundable. Selection is stake-weighted (so splitting one stake across many wallets gains nothing below the cap), jurors must register before the bounty is accepted, and the draw uses a future drand round, but one owner of many wallets is not detected.
-20. **A maintainer can edit a merged pull request's description to sway the model.** The model can then only downgrade a proven delivery (to PARTIAL or UNDETERMINED), never create one or turn it into breach; the contributor's remedy is an appeal, where the jury may restore DELIVERED.
+20. **A maintainer can edit a merged pull request's description to sway the model.** The model can then only withhold or downgrade full payment (to PARTIAL or UNDETERMINED), never create a delivery the code did not prove or turn it into breach; the contributor's remedy is an appeal, where the jury may restore DELIVERED.
 21. **An appeal delays settlement by about five days** (draw after the window, two days to commit, one to reveal). If the jury fails to form a majority the appellant gets the bond back, so an appeal costs little more than time.
-22. **Live coverage is partial.** The contract has run on GenLayer Studio (see the live test results in the README), but only through Studio calls. The frontend was exercised live on the production contract with two throwaway test-session accounts (create, cancel, balance, withdraw, accept, rejection of sponsor equal to contributor) but not with a browser-extension wallet, `recover_stuck_appeal` has not been run live, and the waiting periods of the production build (48-hour appeal window, 2-day commit, 1-day reveal) were exercised through a short-window variant, `contract_testnet_deploy.py`, whose only difference is the time constants.
+22. **Live coverage is partial.** The first revision of the contract has run on GenLayer Studio (see the live test results in the README), but only through Studio calls; revision 2 (merit check required for every payout to the contributor) was run live only on the short-window build, for one substantive and one trivial open pull request; the merged-pull-request path and the model-failure path of revision 2 were not run live. The frontend was exercised live on the production contract with two throwaway test-session accounts (create, cancel, balance, withdraw, accept, rejection of sponsor equal to contributor) but not with a browser-extension wallet, `recover_stuck_appeal` has not been run live, and the waiting periods of the production build (48-hour appeal window, 2-day commit, 1-day reveal) were exercised through a short-window variant, `contract_testnet_deploy.py`, whose only difference is the time constants.
 
 ## 10. Testing
 

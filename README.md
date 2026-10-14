@@ -4,7 +4,7 @@ Dispute resolution for GitHub code bounties, built as a GenLayer Intelligent Con
 
 A sponsor escrows a reward. A contributor posts a performance bond. When the deadline arrives, the contract reads the pull request itself from the GitHub API and decides in code whether the work was delivered. A model is consulted only for questions code cannot answer. A staked, commit-reveal jury can overturn the automated outcome, but never without independent verification against the frozen evidence.
 
-The central rule: **a maintainer who stays silent is not a contributor who failed.** A correct pull request by the right author, opened in time and still unmerged, resolves as partially delivered by a deterministic rule. It never resolves as not delivered.
+The central rule: **a maintainer who stays silent is not a contributor who failed.** A correct pull request by the right author, opened in time and still unmerged, is never resolved as not delivered. It resolves as partially delivered when a merit check affirms that the work substantively addresses the completion criteria, and otherwise as undetermined with both deposits refunded and the jury still available.
 
 ## What is anchored on-chain at creation
 
@@ -32,7 +32,7 @@ The contract parses `https://api.github.com/repos/<repo>/pulls/<n>` itself. A pu
 6. `merged_at` falls inside the window between creation and deadline (integer time math)
 7. The title or body has a closing keyword plus the anchored issue number
 
-A code backstop forces any "delivered" claim down to undetermined unless every check passed. One merged pull request can settle only one bounty.
+A code backstop forces any "delivered" claim down to undetermined unless every check passed. Passing the checks is necessary, not sufficient: full payment also needs an affirmative merit answer, and the silence or failure of the model never authorises payment. One merged pull request can settle only one bounty.
 
 ## Outcomes and payouts
 
@@ -50,7 +50,8 @@ Not delivered needs both proof from the evidence (a pull request the contributor
 - **Early or immature rulings are rejected, not recorded.** If evidence cannot be read yet, or an empty search is less than 24 hours after the deadline, `adjudicate` reverts and the case stays open for a later attempt.
 - **Rejected payments are refunded, not stranded.** A payable call that is rejected while GEN is attached credits that GEN to the sender's withdrawable balance and returns the reason instead of reverting.
 - **The jury is bounded by the evidence.** `get_jury_options` lists what a jury may decide; it can never award delivery without a fully checked merged pull request, and jurors earn the same fee whichever way they vote.
-- **No stuck model disagreements.** After 3 days past the deadline, `adjudicate` rules in code only.
+- **Unjudged work is never paid.** If the model gives no usable answer, `adjudicate` reverts and can be retried. After 3 days past the deadline it rules in code only: delivered and pending pull requests become undetermined (each side refunded) and the jury can still decide.
+- **Trivial work earns nothing automatically.** A pending pull request must carry a non-empty change and pass the merit check before any partial reward is paid.
 - **One pull request, one reward.** When several bounties name the same pull request, the earliest created (by the contract's own counter) wins while the others are unsettled; the rest are refunded.
 
 ## Lifecycle
@@ -68,6 +69,7 @@ Every state has a way out: cancel, expire without evidence, expire unruled, sett
 | `contract_testnet_deploy.py` | Same contract with short time windows, used for the live tests |
 | `TESTNET_TESTS.md` | Record of the live tests: wallets, results and transaction hashes |
 | `tools/make_deploy.py` | Builds the deploy file using `ast` and `tokenize` |
+| `tools/make_testnet_deploy.py` | Builds the short-window test copy from the deploy file |
 | `index.html` | Single-file frontend (genlayer-js from esm.sh) |
 | `tests/` | Offline tests with a self-written SDK stub |
 | `ARCHITECTURE.md` | Design and disclosed limitations |
@@ -97,9 +99,13 @@ Views: `get_bounty`, `list_bounties`, `get_stats`, `total_bounties`, `get_pr_cla
 
 ## Status
 
-Offline tests cover the state machine, the GitHub extraction and assessment logic, payouts and the jury. The contract has also been run live on GenLayer Studio with real GitHub evidence, real consensus and real GEN transfers.
+Deployed contracts: revision 2 (production windows) `0xe90E6535b7319101128aEC98b98602f7335739a2` on GenLayer Studio. The first revision `0x2608a47d0b6A2e7606cd4C89d23Db12f14B1bc97` and the short-window test builds (`0x1d53e9A4ADE1D751d9403ccfeC5eA2393ffF1aa8` first revision, `0xCDB499963a6796cF0A450D0eA8EC7B20be270BDE` revision 2) are kept for the test record.
+
+Offline tests (552) cover the state machine, the GitHub extraction and assessment logic, payouts and the jury, including adversarial regression tests for the steward review (`tests/test_steward_corrections.py`): unavailable or negative model answers never authorise full payment, and unverified or trivial work never earns a partial reward automatically. The contract has also been run live on GenLayer Studio with real GitHub evidence, real consensus and real GEN transfers.
 
 ### Live test results
+
+Revision note: the live results in the table below were recorded on the first revision. Revision 2 changes only the payout rules described in "Outcomes and payouts" and "Rules worth knowing" (merit check required for delivered and pending pull requests, non-empty change required for pending). It was tested live on a short-window build (`0xCDB499963a6796cF0A450D0eA8EC7B20be270BDE`): an open pull request with real work was ruled PARTIALLY_DELIVERED, and an open one-character pull request was ruled UNDETERMINED and refunded (see `TESTNET_TESTS.md`).
 
 The time-gated paths were run on `contract_testnet_deploy.py`, a copy of the contract with short windows (5-minute appeal window, 15-minute commit and reveal, 1-hour resolution timeout). Only the time constants differ.
 
