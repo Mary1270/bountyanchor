@@ -46,7 +46,7 @@
 
   nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--paper);border-top:1px solid var(--line);
            padding-bottom:env(safe-area-inset-bottom)}
-  nav.tabs .wrap{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:6px 8px}
+  nav.tabs .wrap{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;padding:6px 8px}
   .tab-link{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;border-radius:12px;
             text-decoration:none;color:var(--ink-faint);font-size:12px;font-weight:600}
   .tab-link svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
@@ -223,6 +223,24 @@
   </section>
 
   <!-- ===== Jury ===== -->
+  <!-- ===== Insights ===== -->
+  <section class="route" id="route-insights">
+    <h2>Insights</h2>
+    <p class="muted">Read-only reports computed by the contract from its own records. Nothing on this page moves GEN.</p>
+    <div class="stats" id="ledgerStats"></div>
+    <div class="card" id="ledgerOutcomes"></div>
+    <div class="out" id="ledgerOut"></div>
+    <div class="btnrow"><button class="ghost" id="ledgerRefresh">Refresh report</button></div>
+    <h2 style="margin-top:26px">Address profile</h2>
+    <div class="card">
+      <label for="pAddr">Address</label>
+      <input id="pAddr" placeholder="0x... (empty uses the connected account)" autocapitalize="off" autocomplete="off" spellcheck="false">
+      <button id="pBtn">Look up profile</button>
+      <div class="out" id="pOut"></div>
+      <div id="pBox"></div>
+    </div>
+  </section>
+
   <section class="route" id="route-jury">
     <h2>Jurors</h2>
     <p class="muted">Stake GEN to be eligible for appeal juries. Selection weight is capped, so a large stake cannot buy unlimited odds. Register before a bounty is accepted: later registrations are not eligible for that bounty.</p>
@@ -287,6 +305,8 @@
     <svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>Explore</a>
   <a class="tab-link" data-tab="create" href="#/create">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>Create</a>
+  <a class="tab-link" data-tab="insights" href="#/insights">
+    <svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Insights</a>
   <a class="tab-link" data-tab="jury" href="#/jury">
     <svg viewBox="0 0 24 24"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/></svg>Jury</a>
   <a class="tab-link" data-tab="withdraw" href="#/withdraw">
@@ -297,7 +317,7 @@
 import { createClient, createAccount } from "https://esm.sh/genlayer-js@latest";
 import { studionet } from "https://esm.sh/genlayer-js@latest/chains";
 
-const DEFAULT_CONTRACT_ADDRESS = "0xe90E6535b7319101128aEC98b98602f7335739a2";
+const DEFAULT_CONTRACT_ADDRESS = "0x6F3Bce8d631a966fC544B72249afac5f48Aa471a";
 const OUTCOMES = ["BOUNTY_DELIVERED", "PARTIALLY_DELIVERED", "NOT_DELIVERED", "UNDETERMINED"];
 const OUTCOME_LABEL = {
   BOUNTY_DELIVERED: "Delivered", PARTIALLY_DELIVERED: "Partially delivered",
@@ -889,6 +909,60 @@ $("jLookupBtn").addEventListener("click", async () => {
   catch (e) { showOut(out, "Error: " + (e?.message || String(e)), "err"); }
 });
 
+/* ---------- Insights ---------- */
+function statBox(value, label) { return h("div", { class: "stat" }, h("b", { text: String(value) }), h("span", { text: label })); }
+function kvRow(label, value) {
+  return h("div", { class: "row", style: "padding:6px 0;border-bottom:1px solid var(--line)" },
+    h("span", { class: "faint", text: label }), h("b", { text: String(value) }));
+}
+async function loadLedger() {
+  const out = $("ledgerOut");
+  try {
+    const d = await readJson("get_ledger");
+    const stats = clear($("ledgerStats"));
+    stats.appendChild(statBox(d.total, "bounties"));
+    stats.appendChild(statBox(weiToGen(d.reward_volume), "GEN escrowed"));
+    stats.appendChild(statBox(weiToGen(d.contract_balance), "GEN held now"));
+    const box = clear($("ledgerOutcomes"));
+    box.appendChild(h("b", { text: "Settled bounties by outcome" }));
+    const outcomes = Object.keys(d.by_outcome).sort();
+    if (!outcomes.length) box.appendChild(h("div", { class: "empty", text: "No bounty has settled yet." }));
+    for (const o of outcomes) box.appendChild(kvRow(OUTCOME_LABEL[o] || o, d.by_outcome[o]));
+    box.appendChild(h("b", { style: "display:block;margin-top:14px", text: "By status" }));
+    for (const k of Object.keys(d.by_status).sort()) box.appendChild(kvRow(k, d.by_status[k]));
+    box.appendChild(h("b", { style: "display:block;margin-top:14px", text: "Settled payouts" }));
+    box.appendChild(kvRow("Paid to contributors", weiToGen(d.paid_to_contributors) + " GEN"));
+    box.appendChild(kvRow("Returned to sponsors", weiToGen(d.returned_to_sponsors) + " GEN"));
+    if (d.truncated) showOut(out, `Report covers the newest ${d.scanned} of ${d.total} bounties.`, "ok");
+    else out.style.display = "none";
+  } catch (e) { showOut(out, "Could not load the report: " + (e?.message || String(e)), "err"); }
+}
+async function loadProfile(addr) {
+  const out = $("pOut"); const box = clear($("pBox"));
+  if (!/^0x[0-9a-fA-F]{40}$/.test(addr || "")) return showOut(out, "Enter a valid 0x address or connect a wallet.", "err");
+  try {
+    showOut(out, "Loading...");
+    const d = await readJson("get_profile", [addr]);
+    out.style.display = "none";
+    box.appendChild(kvRow("Bounties as sponsor", d.bounties_as_sponsor));
+    box.appendChild(kvRow("Bounties as contributor", d.bounties_as_contributor));
+    for (const o of Object.keys(d.contributor_outcomes).sort()) box.appendChild(kvRow("As contributor: " + (OUTCOME_LABEL[o] || o), d.contributor_outcomes[o]));
+    box.appendChild(kvRow("Received as contributor", weiToGen(d.received_as_contributor) + " GEN"));
+    box.appendChild(kvRow("Returned as sponsor", weiToGen(d.returned_as_sponsor) + " GEN"));
+    box.appendChild(kvRow("Withdrawable now", weiToGen(d.pending_withdrawal) + " GEN"));
+    box.appendChild(kvRow("Juror stake", weiToGen(d.juror.stake) + " GEN"));
+    box.appendChild(kvRow("Juror reputation", d.juror.reputation));
+    box.appendChild(kvRow("Juror cases", d.juror.cases_participated));
+    if (d.recent_bounties.length) {
+      box.appendChild(h("b", { style: "display:block;margin-top:14px", text: "Recent bounties" }));
+      for (const id of d.recent_bounties) box.appendChild(h("a", { class: "card link", href: "#/bounty/" + encodeURIComponent(id), text: id }));
+    }
+    if (d.truncated) box.appendChild(h("div", { class: "faint", text: `Covers the newest ${d.scanned} bounties only.` }));
+  } catch (e) { showOut(out, "Error: " + (e?.message || String(e)), "err"); }
+}
+$("ledgerRefresh").addEventListener("click", loadLedger);
+$("pBtn").addEventListener("click", () => loadProfile($("pAddr").value.trim() || account));
+
 /* ---------- Balance ---------- */
 async function refreshPending() {
   if (!account) { $("myPending").textContent = "connect a wallet"; return; }
@@ -937,12 +1011,18 @@ function route() {
   let name = "home";
   if (m) name = "bounty";
   else if (hash.startsWith("#/create")) name = "create";
+  else if (hash.startsWith("#/insights")) name = "insights";
   else if (hash.startsWith("#/jury")) name = "jury";
   else if (hash.startsWith("#/withdraw")) name = "withdraw";
   document.querySelectorAll(".route").forEach((r) => r.classList.toggle("active", r.id === "route-" + name));
   document.querySelectorAll(".tab-link").forEach((a) => a.classList.toggle("active", a.dataset.tab === (name === "bounty" ? "home" : name)));
   if (name === "home") loadList(false);
   if (name === "bounty") renderBounty(decodeURIComponent(m[1]));
+  if (name === "insights") {
+    loadLedger();
+    const pm = hash.match(/^#\/insights\/(0x[0-9a-fA-F]{40})$/);
+    if (pm) { $("pAddr").value = pm[1]; loadProfile(pm[1]); }
+  }
   if (name === "withdraw") { refreshPending(); refreshContractBalance(); }
   window.scrollTo(0, 0);
 }

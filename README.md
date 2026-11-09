@@ -95,13 +95,13 @@ python3 tools/make_deploy.py --check
 
 Writes: `create_bounty`, `accept_bounty`, `cancel_bounty`, `submit_evidence`, `lock_evidence`, `adjudicate`, `settle_unappealed`, `expire_no_evidence`, `expire_unruled`, `recover_stuck_appeal`, `register_juror`, `unstake_juror`, `file_appeal`, `draw_jury`, `commit_vote`, `reveal_vote`, `settle_jury`, `withdraw`.
 
-Views: `get_bounty`, `list_bounties`, `get_stats`, `total_bounties`, `get_pr_claim`, `get_jury_options`, `count_eligible_jurors`, `get_juror`, `get_pending_withdrawal`, `get_contract_balance`, `verify_jury_selection`.
+Views: `get_bounty`, `list_bounties`, `get_stats`, `get_ledger`, `get_profile`, `total_bounties`, `get_pr_claim`, `get_jury_options`, `count_eligible_jurors`, `get_juror`, `get_pending_withdrawal`, `get_contract_balance`, `verify_jury_selection`.
 
 ## Status
 
-Deployed contracts: revision 2 (production windows) `0xe90E6535b7319101128aEC98b98602f7335739a2` on GenLayer Studio. The first revision `0x2608a47d0b6A2e7606cd4C89d23Db12f14B1bc97` and the short-window test builds (`0x1d53e9A4ADE1D751d9403ccfeC5eA2393ffF1aa8` first revision, `0xCDB499963a6796cF0A450D0eA8EC7B20be270BDE` revision 2) are kept for the test record.
+Deployed contract (v1.2.0, production windows): `0x6F3Bce8d631a966fC544B72249afac5f48Aa471a` on GenLayer Studio. Superseded: v1.1.0 (revision 2) `0xe90E6535b7319101128aEC98b98602f7335739a2` and the first revision `0x2608a47d0b6A2e7606cd4C89d23Db12f14B1bc97`. The short-window test builds (`0x1d53e9A4ADE1D751d9403ccfeC5eA2393ffF1aa8` first revision, `0xCDB499963a6796cF0A450D0eA8EC7B20be270BDE` revision 2) are kept for the test record.
 
-Offline tests (552) cover the state machine, the GitHub extraction and assessment logic, payouts and the jury, including adversarial regression tests for the steward review (`tests/test_steward_corrections.py`): unavailable or negative model answers never authorise full payment, and unverified or trivial work never earns a partial reward automatically. The contract has also been run live on GenLayer Studio with real GitHub evidence, real consensus and real GEN transfers.
+Offline tests (569) cover the state machine, the GitHub extraction and assessment logic, payouts and the jury, including adversarial regression tests for the steward review (`tests/test_steward_corrections.py`): unavailable or negative model answers never authorise full payment, and unverified or trivial work never earns a partial reward automatically. The contract has also been run live on GenLayer Studio with real GitHub evidence, real consensus and real GEN transfers.
 
 ### Live test results
 
@@ -121,6 +121,25 @@ The time-gated paths were run on `contract_testnet_deploy.py`, a copy of the con
 | `recover_stuck_appeal` | Not run live, reviewed in code only |
 
 After every run the contract balance returned to zero. The frontend was tested live on the production contract with two throwaway test-session accounts (create, cancel, balance, withdraw, accept); it has not been tested with a browser-extension wallet. The full record, including transaction hashes, is in `TESTNET_TESTS.md`. See `ARCHITECTURE.md` for known limitations.
+
+## Changelog
+
+### v1.2.0
+
+Two new read-only views and an Insights tab. No payout, jury or state-machine logic changed.
+
+- `get_ledger`: counts per status and per final outcome, reward volume, and what settled bounties paid to contributors and returned to sponsors, over the newest 500 bounties (`truncated` is set when older ones are not scanned).
+- `get_profile(address)`: bounties as sponsor and as contributor, settled outcomes, wei received and returned, withdrawable balance, juror record and the newest 10 bounty ids for one address.
+- Insights tab in `index.html`: ledger report and address profile lookup.
+- 17 new offline tests (`tests/test_ledger_profile.py`, plus frontend checks); 569 in total, also run against the stripped Studio file.
+
+### v1.1.0
+
+Revision 2: every payout to the contributor needs an affirmative merit check (steward corrections).
+
+### v1.0.0
+
+First release.
 
 ## License
 

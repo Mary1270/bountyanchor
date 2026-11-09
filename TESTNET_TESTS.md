@@ -107,3 +107,15 @@ Contract `0xCDB499963a6796cF0A450D0eA8EC7B20be270BDE` (short-window build of rev
 | bounty_1 | #12 "Fix typo" | 1 file, 1 addition, 1 deletion | UNDETERMINED, no claim, both deposits refunded | Trivial or cosmetic change that does not address the criteria |
 
 Both pull requests stayed open and unmerged. Settlement and withdrawals are recorded below once run.
+
+## v1.2.0 live check (read-only views)
+
+Contract `0x6F3Bce8d631a966fC544B72249afac5f48Aa471a` (production windows) was deployed from wallet 0xf73699c4A8C35a10fBFa74ca07CbEcA99b148Ffd (deploy tx 0x2a92aaea...20977848, ACCEPTED). `get_ledger` on the empty contract returned total 0 and zero money fields. Then wallet 0xf73699c4A8C35a10fBFa74ca07CbEcA99b148Ffd created bounty_0 (reward 5 GEN) for contributor wallet 0x72BE82aD9d8800d45e5cc22b4f2C29BBeDF73bc6, and that wallet accepted it with a 1 GEN bond. Results read afterwards:
+
+| Call | Result |
+| --- | --- |
+| `get_ledger` | total 1, scanned 1, truncated false, by_status {"active": 1}, reward_volume 5000000000000000000, contract_balance 6000000000000000000, paid and returned 0 |
+| `get_profile` (sponsor wallet) | bounties_as_sponsor 1, bounties_as_contributor 0, recent_bounties ["bounty_0"], address lower-cased |
+| `get_profile` (contributor wallet) | bounties_as_sponsor 0, bounties_as_contributor 1, recent_bounties ["bounty_0"], address lower-cased |
+
+Settled-outcome and payout totals of the new views were verified offline only (tests/test_ledger_profile.py), because settlement on the production-window contract takes days.

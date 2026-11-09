@@ -588,6 +588,8 @@ class BountyAnchor(gl.Contract):
     MAX_TEXT_LENGTH = 2000
     MAX_ISSUE_NUMBER = 9999999999
     MAX_LIST_LIMIT = 50
+    MAX_LEDGER_SCAN = 500
+    MAX_PROFILE_RECENT = 10
 
     DRAND_GENESIS = 1595431050
     DRAND_PERIOD = 30
@@ -1657,6 +1659,98 @@ class BountyAnchor(gl.Contract):
         cancelled = int(self.cancelled_count)
         return json.dumps(
             {"total": total, "settled": settled, "cancelled": cancelled, "active": total - settled - cancelled},
+            sort_keys=True,
+        )
+
+    @gl.public.view
+    def get_ledger(self) -> str:
+        total = int(self.bounty_count)
+        scanned = min(total, self.MAX_LEDGER_SCAN)
+        by_status = {}
+        by_outcome = {}
+        volume = 0
+        paid = 0
+        returned = 0
+        index = total - 1
+        while index >= total - scanned:
+            bounty = json.loads(self.bounties[f"bounty_{index}"])
+            status = str(bounty["status"])
+            by_status[status] = by_status.get(status, 0) + 1
+            if status != "cancelled":
+                volume += int(bounty["reward_amount"])
+            if bounty.get("payout_settled"):
+                outcome = str(bounty.get("final_outcome"))
+                by_outcome[outcome] = by_outcome.get(outcome, 0) + 1
+                paid += int(bounty.get("contributor_payout", "0"))
+                returned += int(bounty.get("sponsor_payout", "0"))
+            index -= 1
+        return json.dumps(
+            {
+                "total": total,
+                "scanned": scanned,
+                "truncated": total > scanned,
+                "by_status": by_status,
+                "by_outcome": by_outcome,
+                "reward_volume": str(volume),
+                "paid_to_contributors": str(paid),
+                "returned_to_sponsors": str(returned),
+                "contract_balance": str(int(self.balance)),
+            },
+            sort_keys=True,
+        )
+
+    @gl.public.view
+    def get_profile(self, address: str) -> str:
+        key = self._address_key(address)
+        total = int(self.bounty_count)
+        scanned = min(total, self.MAX_LEDGER_SCAN)
+        as_sponsor = 0
+        as_contributor = 0
+        outcomes = {}
+        received = 0
+        returned = 0
+        recent = []
+        index = total - 1
+        while index >= total - scanned:
+            bounty = json.loads(self.bounties[f"bounty_{index}"])
+            is_sponsor = self._address_key(bounty["party_a"]) == key
+            is_contributor = self._address_key(bounty["party_b"]) == key
+            if is_sponsor or is_contributor:
+                if len(recent) < self.MAX_PROFILE_RECENT:
+                    recent.append(bounty["bounty_id"])
+                settled = bool(bounty.get("payout_settled"))
+                if is_sponsor:
+                    as_sponsor += 1
+                    if settled:
+                        returned += int(bounty.get("sponsor_payout", "0"))
+                if is_contributor:
+                    as_contributor += 1
+                    if settled:
+                        outcome = str(bounty.get("final_outcome"))
+                        outcomes[outcome] = outcomes.get(outcome, 0) + 1
+                        received += int(bounty.get("contributor_payout", "0"))
+            index -= 1
+        juror = self._load_juror(key)
+        pending = str(int(self.pending_withdrawals[key])) if key in self.pending_withdrawals else "0"
+        return json.dumps(
+            {
+                "address": key,
+                "scanned": scanned,
+                "truncated": total > scanned,
+                "bounties_as_sponsor": as_sponsor,
+                "bounties_as_contributor": as_contributor,
+                "contributor_outcomes": outcomes,
+                "received_as_contributor": str(received),
+                "returned_as_sponsor": str(returned),
+                "recent_bounties": recent,
+                "pending_withdrawal": pending,
+                "juror": {
+                    "stake": juror["stake"],
+                    "reputation": juror["reputation"],
+                    "cases_participated": juror["cases_participated"],
+                    "non_reveals": juror["non_reveals"],
+                },
+            },
             sort_keys=True,
         )
 
