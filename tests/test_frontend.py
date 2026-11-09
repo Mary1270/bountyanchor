@@ -70,6 +70,19 @@ class TestFrontend(unittest.TestCase):
                          ["wallet", "repo", "branch", "issue", "login", "terms", "criteria",
                           "deadline.toISOString()", "bondBps", "partial"])
 
+    def test_insights_tab_uses_the_new_views(self):
+        self.assertIn('href="#/insights"', HTML)
+        self.assertIn('id="route-insights"', HTML)
+        self.assertIn('"get_ledger"', HTML)
+        self.assertIn('"get_profile"', HTML)
+        self.assertIn('name = "insights"', HTML)
+        self.assertEqual({"get_ledger", "get_profile"} - contract_methods(), set())
+
+    def test_insights_never_sends_a_transaction(self):
+        block = re.search(r"/\* ---------- Insights ---------- \*/(.*?)/\* ---------- Balance", script(), re.S).group(1)
+        self.assertNotIn("write(", block)
+        self.assertNotIn("writeContract", block)
+
     def test_page_text_never_uses_innerhtml(self):
         self.assertNotIn("innerHTML", HTML)
         self.assertNotIn("outerHTML", HTML)
