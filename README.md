@@ -1,6 +1,6 @@
 # BountyAnchor
 
-Dispute resolution for GitHub code bounties, built as a GenLayer Intelligent Contract.
+Dispute resolution for GitHub code bounties, built as a GenLayer Intelligent Contract.-
 
 A sponsor escrows a reward. A contributor posts a performance bond. When the deadline arrives, the contract reads the pull request itself from the GitHub API and decides in code whether the work was delivered. A model is consulted only for questions code cannot answer. A staked, commit-reveal jury can overturn the automated outcome, but never without independent verification against the frozen evidence.
 
