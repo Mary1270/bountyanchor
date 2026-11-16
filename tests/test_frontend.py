@@ -83,6 +83,16 @@ class TestFrontend(unittest.TestCase):
         self.assertNotIn("write(", block)
         self.assertNotIn("writeContract", block)
 
+    def test_timeline_and_status_filter_use_the_new_views(self):
+        for needle in ('"get_timeline"', '"list_by_status"', 'id="statusFilter"', "function timelineCard"):
+            self.assertIn(needle, HTML)
+        self.assertEqual({"get_timeline", "list_by_status"} - contract_methods(), set())
+
+    def test_status_filter_options_are_valid_contract_statuses(self):
+        options = set(re.findall(r'<option value="([a-z_]+)">', re.search(r'id="statusFilter">(.*?)</select>', HTML, re.S).group(1)))
+        match = re.search(r"VALID_STATUSES = \((.*?)\)", CONTRACT, re.S).group(1)
+        self.assertEqual(options, set(re.findall(r'"([a-z_]+)"', match)))
+
     def test_page_text_never_uses_innerhtml(self):
         self.assertNotIn("innerHTML", HTML)
         self.assertNotIn("outerHTML", HTML)
