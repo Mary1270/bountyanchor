@@ -173,6 +173,18 @@
     </div>
     <div class="row"><h2>Explore</h2><a href="#/create" style="font-weight:700;text-decoration:none">+ New bounty</a></div>
     <input id="filterInput" placeholder="Filter by ID, repository, login, address or status" style="margin:12px 0">
+    <label for="statusFilter">Status</label>
+    <select id="statusFilter">
+      <option value="">All statuses</option>
+      <option value="posted">Awaiting contributor</option>
+      <option value="active">Collecting evidence</option>
+      <option value="evidence_locked">Evidence locked</option>
+      <option value="ruled">Ruled, appeal open</option>
+      <option value="appeal_filed">Appeal filed</option>
+      <option value="jury_voting">Jury voting</option>
+      <option value="settled">Settled</option>
+      <option value="cancelled">Cancelled</option>
+    </select>
     <div id="bountyList"></div>
     <div class="btnrow">
       <button class="ghost" id="refreshBtn">Refresh</button>
@@ -317,7 +329,7 @@
 import { createClient, createAccount } from "https://esm.sh/genlayer-js@latest";
 import { studionet } from "https://esm.sh/genlayer-js@latest/chains";
 
-const DEFAULT_CONTRACT_ADDRESS = "0x6F3Bce8d631a966fC544B72249afac5f48Aa471a";
+const DEFAULT_CONTRACT_ADDRESS = "0x395EE17FD8df4480Db7070560fCdE15AB3bdF105";
 const OUTCOMES = ["BOUNTY_DELIVERED", "PARTIALLY_DELIVERED", "NOT_DELIVERED", "UNDETERMINED"];
 const OUTCOME_LABEL = {
   BOUNTY_DELIVERED: "Delivered", PARTIALLY_DELIVERED: "Partially delivered",
@@ -620,8 +632,11 @@ async function loadList(append) {
   if (!append) { listRows = []; clear(box).appendChild(h("div", { class: "empty" }, h("span", { class: "spin" }), "Loading bounties...")); }
   loadStats();
   try {
-    const page = await readJson("list_bounties", [listRows.length, LIST_LIMIT]);
-    listTotal = page.total;
+    const statusWanted = $("statusFilter").value;
+    const page = statusWanted
+      ? await readJson("list_by_status", [statusWanted, listRows.length, LIST_LIMIT])
+      : await readJson("list_bounties", [listRows.length, LIST_LIMIT]);
+    listTotal = statusWanted ? page.matched : page.total;
     const seen = new Set(listRows.map((r) => r.bounty_id));
     listRows = listRows.concat(page.bounties.filter((r) => !seen.has(r.bounty_id)));
     renderList();
@@ -630,6 +645,7 @@ async function loadList(append) {
   }
 }
 $("filterInput").addEventListener("input", renderList);
+$("statusFilter").addEventListener("change", () => loadList(false));
 $("refreshBtn").addEventListener("click", () => loadList(false));
 $("moreBtn").addEventListener("click", () => loadList(true));
 
@@ -700,6 +716,34 @@ function assessmentSection(b) {
   return wrap;
 }
 
+function untilText(iso) {
+  const ms = Date.parse(iso) - Date.now();
+  if (!(ms > 0)) return "possible now";
+  const m = Math.floor(ms / 60000);
+  const d = Math.floor(m / 1440), hr = Math.floor((m % 1440) / 60), mi = m % 60;
+  return "in " + (d ? d + "d " : "") + (d || hr ? hr + "h " : "") + mi + "m";
+}
+async function timelineCard(id) {
+  const card = h("div", { class: "card" }, h("b", { text: "Timeline" }));
+  try {
+    const t = await readJson("get_timeline", [id]);
+    for (const e of t.events) {
+      const done = Date.parse(e.at) <= Date.now();
+      card.appendChild(h("div", { class: "row", style: "padding:6px 0;border-bottom:1px solid var(--line)" },
+        h("span", { text: (done ? "\u2713 " : "\u25CB ") + e.label }), h("span", { class: "faint", text: fmtTime(e.at) })));
+    }
+    const n = t.next_step;
+    if (n.method) {
+      card.appendChild(h("p", { class: "muted", style: "margin-top:10px",
+        text: `Next: ${n.label} (${n.method}) - ${n.next_at ? untilText(n.next_at) : "possible now"}` }));
+    }
+    if (t.fallback) {
+      card.appendChild(h("p", { class: "hint", text: `If this stalls: ${t.fallback.label} (${t.fallback.method}) ${untilText(t.fallback.at)}` }));
+    }
+  } catch (e) { card.appendChild(h("div", { class: "faint", text: "Timeline unavailable: " + (e?.message || String(e)) })); }
+  return card;
+}
+
 async function renderBounty(id) {
   const view = clear($("bountyView"));
   view.appendChild(h("div", { class: "empty" }, h("span", { class: "spin" }), "Loading..."));
@@ -727,6 +771,8 @@ async function renderBounty(id) {
       h("div", { class: "big", text: OUTCOME_LABEL[outcome] || outcome }),
       b.tier1_reasoning ? h("p", { class: "muted", style: "margin-top:8px", text: b.tier1_reasoning }) : null));
   }
+
+  view.appendChild(await timelineCard(id));
 
   view.appendChild(h("div", { class: "card" }, kv([
     ["Sponsor", h("span", { class: "mono", text: b.party_a })],

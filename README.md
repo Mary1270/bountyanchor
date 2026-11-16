@@ -95,13 +95,13 @@ python3 tools/make_deploy.py --check
 
 Writes: `create_bounty`, `accept_bounty`, `cancel_bounty`, `submit_evidence`, `lock_evidence`, `adjudicate`, `settle_unappealed`, `expire_no_evidence`, `expire_unruled`, `recover_stuck_appeal`, `register_juror`, `unstake_juror`, `file_appeal`, `draw_jury`, `commit_vote`, `reveal_vote`, `settle_jury`, `withdraw`.
 
-Views: `get_bounty`, `list_bounties`, `get_stats`, `get_ledger`, `get_profile`, `total_bounties`, `get_pr_claim`, `get_jury_options`, `count_eligible_jurors`, `get_juror`, `get_pending_withdrawal`, `get_contract_balance`, `verify_jury_selection`.
+Views: `get_bounty`, `list_bounties`, `get_stats`, `get_ledger`, `get_profile`, `list_by_status`, `get_timeline`, `total_bounties`, `get_pr_claim`, `get_jury_options`, `count_eligible_jurors`, `get_juror`, `get_pending_withdrawal`, `get_contract_balance`, `verify_jury_selection`.
 
 ## Status
 
-Deployed contract (v1.2.0, production windows): `0x6F3Bce8d631a966fC544B72249afac5f48Aa471a` on GenLayer Studio. Superseded: v1.1.0 (revision 2) `0xe90E6535b7319101128aEC98b98602f7335739a2` and the first revision `0x2608a47d0b6A2e7606cd4C89d23Db12f14B1bc97`. The short-window test builds (`0x1d53e9A4ADE1D751d9403ccfeC5eA2393ffF1aa8` first revision, `0xCDB499963a6796cF0A450D0eA8EC7B20be270BDE` revision 2) are kept for the test record.
+Deployed contract (v1.3.0, production windows): `0x395EE17FD8df4480Db7070560fCdE15AB3bdF105` on GenLayer Studio. Superseded: v1.2.0 `0x6F3Bce8d631a966fC544B72249afac5f48Aa471a`, v1.1.0 (revision 2) `0xe90E6535b7319101128aEC98b98602f7335739a2` and the first revision `0x2608a47d0b6A2e7606cd4C89d23Db12f14B1bc97`. The short-window test builds (`0x1d53e9A4ADE1D751d9403ccfeC5eA2393ffF1aa8` first revision, `0xCDB499963a6796cF0A450D0eA8EC7B20be270BDE` revision 2) are kept for the test record.
 
-Offline tests (569) cover the state machine, the GitHub extraction and assessment logic, payouts and the jury, including adversarial regression tests for the steward review (`tests/test_steward_corrections.py`): unavailable or negative model answers never authorise full payment, and unverified or trivial work never earns a partial reward automatically. The contract has also been run live on GenLayer Studio with real GitHub evidence, real consensus and real GEN transfers.
+Offline tests (595) cover the state machine, the GitHub extraction and assessment logic, payouts and the jury, including adversarial regression tests for the steward review (`tests/test_steward_corrections.py`): unavailable or negative model answers never authorise full payment, and unverified or trivial work never earns a partial reward automatically. The contract has also been run live on GenLayer Studio with real GitHub evidence, real consensus and real GEN transfers.
 
 ### Live test results
 
@@ -123,6 +123,15 @@ The time-gated paths were run on `contract_testnet_deploy.py`, a copy of the con
 After every run the contract balance returned to zero. The frontend was tested live on the production contract with two throwaway test-session accounts (create, cancel, balance, withdraw, accept); it has not been tested with a browser-extension wallet. The full record, including transaction hashes, is in `TESTNET_TESTS.md`. See `ARCHITECTURE.md` for known limitations.
 
 ## Changelog
+
+### v1.3.0
+
+Two new read-only views, a timeline card and a status filter. No payout, jury or state-machine logic changed.
+
+- `get_timeline(bounty_id)`: the bounty's recorded moments in time order, the next step with the method that performs it and when it becomes possible, and the permissionless recovery that opens later if the normal step stalls.
+- `list_by_status(status, offset, limit)`: newest-first bounties in one status over the newest 500 bounties (`truncated` is set when older ones are not scanned).
+- `index.html`: a Timeline card with countdowns on the bounty page and a status filter on Explore.
+- 26 new offline tests (`tests/test_timeline_status.py`, plus frontend checks); 595 in total, also run against the stripped Studio file.
 
 ### v1.2.0
 

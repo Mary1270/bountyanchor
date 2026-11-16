@@ -119,3 +119,14 @@ Contract `0x6F3Bce8d631a966fC544B72249afac5f48Aa471a` (production windows) was d
 | `get_profile` (contributor wallet) | bounties_as_sponsor 0, bounties_as_contributor 1, recent_bounties ["bounty_0"], address lower-cased |
 
 Settled-outcome and payout totals of the new views were verified offline only (tests/test_ledger_profile.py), because settlement on the production-window contract takes days.
+
+## v1.3.0 live check (timeline and status views)
+
+Contract `0x395EE17FD8df4480Db7070560fCdE15AB3bdF105` (production windows) was deployed from wallet 0xf73699c4A8C35a10fBFa74ca07CbEcA99b148Ffd (deploy tx 0xcfbaad59...ffee7a0a). The same wallet created bounty_0 (reward 5 GEN, create tx 0xdde01d2e...efcc0296) for contributor wallet 0x72BE82aD9d8800d45e5cc22b4f2C29BBeDF73bc6, which accepted it with a 1 GEN bond (tx 0xc85a7809...3aebb944). Results read afterwards:
+
+| Call | Result |
+| --- | --- |
+| `get_timeline("bounty_0")` before acceptance | status posted, events created and deadline, next step accept_bounty (possible now), no fallback |
+| `get_timeline("bounty_0")` after acceptance | status active, events created, accepted, deadline and evidence_deadline, next step submit_evidence (possible now), fallback expire_no_evidence at the evidence deadline |
+
+The settled, ruled, appeal and jury branches of the timeline and the status listing were verified offline only (tests/test_timeline_status.py).

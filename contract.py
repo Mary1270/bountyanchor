@@ -840,6 +840,9 @@ class BountyAnchor(gl.Contract):
     MAX_LIST_LIMIT = 50
     MAX_LEDGER_SCAN = 500
     MAX_PROFILE_RECENT = 10
+    VALID_STATUSES = (
+        "posted", "active", "evidence_locked", "ruled", "appeal_filed", "jury_voting", "settled", "cancelled",
+    )
 
     DRAND_GENESIS = 1595431050
     DRAND_PERIOD = 30
@@ -2082,6 +2085,119 @@ class BountyAnchor(gl.Contract):
         cancelled = int(self.cancelled_count)
         return json.dumps(
             {"total": total, "settled": settled, "cancelled": cancelled, "active": total - settled - cancelled},
+            sort_keys=True,
+        )
+
+    @gl.public.view
+    def list_by_status(self, status: str, offset: int, limit: int) -> str:
+        """Newest first, only bounties in `status`, scanning at most the
+        newest MAX_LEDGER_SCAN bounties. Returns {"status", "matched",
+        "offset", "limit", "truncated", "bounties": [summary]}. `matched` is
+        the number of matches inside the scanned range. Changes no state."""
+        wanted = str(status).strip()
+        if wanted not in self.VALID_STATUSES:
+            raise gl.vm.UserError("Unknown status; use one of " + ", ".join(self.VALID_STATUSES))
+        total = int(self.bounty_count)
+        scanned = min(total, self.MAX_LEDGER_SCAN)
+        start = max(0, int(offset))
+        count = max(1, min(int(limit), self.MAX_LIST_LIMIT))
+        matched = 0
+        rows = []
+        index = total - 1
+        while index >= total - scanned:
+            bounty = json.loads(self.bounties[f"bounty_{index}"])
+            if bounty["status"] == wanted:
+                if matched >= start and len(rows) < count:
+                    rows.append(self._summary(bounty))
+                matched += 1
+            index -= 1
+        return json.dumps(
+            {
+                "status": wanted,
+                "matched": matched,
+                "offset": start,
+                "limit": count,
+                "truncated": total > scanned,
+                "bounties": rows,
+            },
+            sort_keys=True,
+        )
+
+    @gl.public.view
+    def get_timeline(self, bounty_id: str) -> str:
+        """Read-only schedule of one bounty: its recorded moments in time
+        order (`events`) and the next step, with the method that performs it
+        and when it becomes possible (`next_at`, null when possible now).
+        `fallback` names the permissionless recovery that opens later when
+        the normal step stalls. Everything is derived from the bounty's own
+        record and the contract constants; nothing is written."""
+        bounty = self._load(bounty_id)
+        status = str(bounty["status"])
+        events = []
+
+        def mark(key, label, value):
+            if value:
+                events.append({"key": key, "label": label, "at": str(value)})
+
+        mark("created", "Bounty created", bounty.get("created_at"))
+        mark("accepted", "Contributor accepted", bounty.get("accepted_at"))
+        mark("deadline", "Delivery deadline", bounty.get("deadline"))
+        mark("evidence_deadline", "Evidence window closes", bounty.get("evidence_deadline"))
+        mark("evidence_lock", "Counterparty grace ends", bounty.get("evidence_lock_at"))
+        snapshot = bounty.get("evidence_snapshot") or {}
+        mark("locked", "Evidence locked", snapshot.get("locked_at"))
+        mark("ruled", "Tier-1 ruling", bounty.get("tier1_resolved_at"))
+        mark("appeal_deadline", "Appeal window closes", bounty.get("appeal_deadline"))
+        jury = bounty.get("jury") or {}
+        mark("commit_deadline", "Jury commit window closes", jury.get("commit_deadline"))
+        mark("reveal_deadline", "Jury reveal window closes", jury.get("reveal_deadline"))
+        mark("settled", "Settled", bounty.get("settled_at"))
+        order = {e["key"]: i for i, e in enumerate(events)}
+        events.sort(key=lambda e: (self._parse_iso(e["at"]), order[e["key"]]))
+
+        timeout = datetime.timedelta(seconds=self.RESOLUTION_TIMEOUT_SECONDS)
+        next_step = {"label": "Nothing further to do", "method": None, "next_at": None}
+        fallback = None
+        if status == "posted":
+            next_step = {"label": "Contributor accepts or sponsor cancels", "method": "accept_bounty", "next_at": None}
+        elif status == "active":
+            submissions = bounty.get("evidence_submissions") or {}
+            if not submissions:
+                next_step = {"label": "Submit evidence", "method": "submit_evidence", "next_at": None}
+                fallback = {"label": "Close with no evidence", "method": "expire_no_evidence",
+                            "at": bounty.get("evidence_deadline")}
+            else:
+                next_step = {"label": "Lock evidence after the grace period", "method": "lock_evidence",
+                             "next_at": bounty.get("evidence_lock_at")}
+        elif status == "evidence_locked":
+            locked_at = self._parse_iso(snapshot["locked_at"]) if snapshot.get("locked_at") else None
+            deadline = self._parse_iso(bounty["deadline"])
+            next_step = {"label": "Run the ruling (any ruling after the deadline)", "method": "adjudicate",
+                         "next_at": bounty["deadline"]}
+            base = max(locked_at, deadline) if locked_at else deadline
+            fallback = {"label": "Close as undetermined if no ruling", "method": "expire_unruled",
+                        "at": (base + timeout).isoformat()}
+        elif status == "ruled":
+            next_step = {"label": "Settle if nobody appeals", "method": "settle_unappealed",
+                         "next_at": bounty.get("appeal_deadline")}
+        elif status == "appeal_filed":
+            next_step = {"label": "Draw the jury", "method": "draw_jury", "next_at": bounty.get("appeal_deadline")}
+            fallback = {"label": "Recover a stuck appeal", "method": "recover_stuck_appeal",
+                        "at": (self._parse_iso(bounty["appeal_deadline"]) + timeout).isoformat()}
+        elif status == "jury_voting":
+            next_step = {"label": "Settle the jury after the reveal window", "method": "settle_jury",
+                         "next_at": jury.get("reveal_deadline")}
+            if jury.get("reveal_deadline"):
+                fallback = {"label": "Recover a stuck appeal", "method": "recover_stuck_appeal",
+                            "at": (self._parse_iso(jury["reveal_deadline"]) + timeout).isoformat()}
+        return json.dumps(
+            {
+                "bounty_id": bounty["bounty_id"],
+                "status": status,
+                "events": events,
+                "next_step": next_step,
+                "fallback": fallback,
+            },
             sort_keys=True,
         )
 
